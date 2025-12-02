@@ -3,25 +3,25 @@ clear; clc; close all
 % Parameters
 nx = 64;
 ny = nx;
-Lx = 2*pi;
-Ly = 1.0;
-dx = Lx / nx;
-dy = Ly / (ny - 1);
+lx = 2*pi;
+ly = 1.0;
+dx = lx/nx;
+dy = ly/ny;
 dyi=1/dy;
-x = (0:nx-1)*dx;
-y = linspace(0, Ly, ny);
+x = dx/2:dx:(lx-dx/2);
+y = -dy/2:dy:(ly+dy/2);
 
 n = 1;
 m = 2;
 
 % Exact solution and RHS
-A_coef  = -1 / (n^2 + (2*pi*m/Ly)^2);
-pext    = zeros(nx, ny);
-rhsp    = zeros(nx, ny);
+A_coef  = -1 / (n^2 + (2*pi*m/ly)^2);
+pext    = zeros(nx,ny+2);
+rhsp    = zeros(nx,ny+2);
 for i = 1:nx
-    for j = 1:ny
-        pext(i,j) =  A_coef*sin(n*x(i))*cos(2*pi*m*y(j)/Ly);
-        rhsp(i,j) =  sin(n*x(i))*cos(2*pi*m*y(j)/Ly);
+    for j = 1:ny+2
+        pext(i,j) =  A_coef*sin(n*x(i))*cos(2*pi*m*y(j)/ly);
+        rhsp(i,j) =  sin(n*x(i))*cos(2*pi*m*y(j)/ly);
     end
 end
 
@@ -30,11 +30,11 @@ rhspc = fft(rhsp, [], 1);
 rhspc = rhspc(1:(nx/2+1), :);  % Keep only positive frequencies
 
 % Wavenumbers and their squares
-kx = (0:nx/2) * (2*pi / Lx);
+kx = (0:nx/2) * (2*pi/lx);
 kx2 = kx.^2;
 
 % Preallocate solution
-pc = zeros(nx/2+1, ny);
+pc = zeros(nx/2+1, ny+2);
 
 
 for i = 1:nx/2+1
@@ -42,12 +42,12 @@ for i = 1:nx/2+1
     % The system is: a(j) * pc(i,j-1) + b(j) * pc(i,j) + c(j) * pc(i,j+1) = d(j)
     
     % Initialize diagonals and RHS
-    a = zeros(ny,1);
-    b = zeros(ny,1);
-    c = zeros(ny,1);
-    d = zeros(ny,1);
+    a = zeros(ny+2,1);
+    b = zeros(ny+2,1);
+    c = zeros(ny+2,1);
+    d = zeros(ny+2,1);
     
-    for j = 1:ny
+    for j = 2:ny+1
         a(j) =  1.0 * dyi^2;
         b(j) = -2.0 * dyi^2 - kx2(i);
         c(j) =  1.0 * dyi^2;
@@ -55,16 +55,14 @@ for i = 1:nx/2+1
     end
 
     % Neumann BC at j = 1 (bottom)
-    b(1) = -2.0 * dyi^2 - kx2(i);
-    c(1) =  2.0 * dyi^2;
+    b(1) = -1.0;% * dyi^2;%- kx2(i);
+    c(1) =  1.0;% * dyi^2;
     a(1) =  0.0;
 
-
     % Neumann BC at j = ny (top)
-    a(ny) =  2.0 * dyi^2;
-    b(ny) = -2.0 * dyi^2 - kx2(i);
-    c(ny) =  0.0;
-
+    a(ny+2) =  1.0;% * dyi^2;
+    b(ny+2) = -1.0;% * dyi^2; - kx2(i);
+    c(ny+2) =  0.0;
 
     if i == 1
             b(1) = 1;
@@ -73,28 +71,28 @@ for i = 1:nx/2+1
     end
         % Thomas algorithm (TDMA)
         % Forward sweep
-        for j = 2:ny
+        for j = 2:ny+2
             factor = a(j) / b(j-1);
             b(j) = b(j) - factor * c(j-1);
             d(j) = d(j) - factor * d(j-1);
         end
 
         % Back substitution
-        sol = zeros(ny,1);
-        sol(ny) = d(ny) / b(ny);
-        for j = ny-1:-1:1
+        sol = zeros(ny+2,1);
+        sol(ny+2) = d(ny+2) / b(ny+2);
+        for j = ny+1:-1:1
             sol(j) = (d(j) - c(j) * sol(j+1)) / b(j);
         end
 
         % Store solution
-        for j = 1:ny
+        for j = 1:ny+2
             pc(i,j) = sol(j);
             %sol(j)
         end
 end
 
 % Reconstruct full spectrum using Hermitian symmetry
-p_hat_full = zeros(nx, ny);
+p_hat_full = zeros(nx, ny+2);
 p_hat_full(1:nx/2+1, :) = pc;
 
 % Fill in the negative frequencies (complex conjugate symmetry)
@@ -110,7 +108,7 @@ p = real(ifft(p_hat_full, [], 1));
 % L2 error ignoring boundaries
 l2norm=0.d0;
 for i=1:nx
-    for j=1:ny	
+    for j=2:ny+1	
         err = p(i,j)-pext(i,j);
         l2norm = l2norm + err*err;
     end

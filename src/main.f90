@@ -13,7 +13,7 @@ use nvtx
 implicit none
 integer :: i, j, k, n, m, t
 integer :: ip,im,jp,jm
-double precision, allocatable :: x(:), y(:), kx(:), kx2(:)
+double precision, allocatable :: x(:), y(:), kx(:), kx2(:), maxdiv
 double precision, allocatable :: a(:,:), b(:,:), c(:,:) !TDMA pressure (real)
 double complex,   allocatable :: d(:,:), sol(:,:) !TDMA pressure (complex variables)
 double precision, allocatable :: af(:,:), bf(:,:), cf(:,:), df(:,:), solf(:,:) !TDMA temperature
@@ -150,13 +150,11 @@ call nucheck(tstart)
 !##########################################################
 
 
-
-
 !##########################################################
 ! Start temporal loop
 !##########################################################
 tstart=tstart+1
-!$acc data copyin(u,v,phi,temp) copy(p) create(rhsu,rhsv,rhsphi,rhstemp,psidi,normx,normy,fxst,fyst,a,b,c,d,sol)
+!$acc data copyin(u,v,phi,temp) create(p,rhsu,rhsv,rhsphi,rhstemp,psidi,normx,normy,fxst,fyst,a,b,c,d,sol)
 write(*,*) "Start temporal loop"
 do t=tstart,tfin
   call cpu_time(times)
@@ -379,6 +377,9 @@ do t=tstart,tfin
         #endif
         ! channel pressure driven (along x)
         !rhsu(i,j)=rhsu(i,j) + 1.d0
+        ! add old pressure
+        !rhsu(i,j)=rhsu(i,j) - rhoi*(pold(i,j)-pold(im,j))*dxi
+        !rhsv(i,j)=rhsv(i,j) - rhoi*(pold(i,j)-pold(i,jm))*dyi
       enddo
     enddo
     !$acc end kernels
@@ -395,8 +396,8 @@ do t=tstart,tfin
         if (ip .gt. nx) ip=1
         if (im .lt. 1) im=nx
         curv=0.5d0*(normx(ip,j)-normx(im,j))*dxi + 0.5d0*(normy(i,jp)-normy(i,jm))*dyi
-        fxst(i,j)= -sigma/rho*curv*0.5d0*(phi(ip,j)-phi(im,j))*dxi!*phi(i,j)*(1.d0-phi(i,j))
-        fyst(i,j)= -sigma/rho*curv*0.5d0*(phi(i,jp)-phi(i,jm))*dyi!*phi(i,j)*(1.d0-phi(i,j))
+        fxst(i,j)= -sigma*curv*0.5d0*(phi(ip,j)-phi(im,j))*dxi!*phi(i,j)*(1.d0-phi(i,j))
+        fyst(i,j)= -sigma*curv*0.5d0*(phi(i,jp)-phi(i,jm))*dyi!*phi(i,j)*(1.d0-phi(i,j))
       enddo
     enddo
     !$acc end kernels
@@ -482,12 +483,12 @@ do t=tstart,tfin
       d(i,j) =  rhspc(i,j)
     end do
     ! Neumann BC at j=0 (ghost and first interior)
-    b(i,0) = -1.0d0*ddyi - kx2(i)
-    c(i,0) =  1.0d0*ddyi
+    b(i,0) = -1.0d0!*ddyi - kx2(i)
+    c(i,0) =  1.0d0!*ddyi
     a(i,0) =  0.0d0
     ! Neumann BC at j=ny (top)
-    a(i,ny+1) =  1.0d0*ddyi
-    b(i,ny+1) = -1.0d0*ddyi - kx2(i)
+    a(i,ny+1) =  1.0d0!*ddyi
+    b(i,ny+1) = -1.0d0!*ddyi - kx2(i)
     c(i,ny+1) =  0.0d0
     ! Special handling for kx=0 (mean mode)
     ! fix pressure on one point (otherwise is zero mean along x)
@@ -540,12 +541,12 @@ do t=tstart,tfin
     do j=1,ny
       im=i-1
       if (im < 1) im=nx
-      u(i,j)=u(i,j) - dt/rho*(p(i,j)-p(im,j))*dxi
+      u(i,j)=u(i,j) - dt*rhoi*(p(i,j)-p(im,j))*dxi
     enddo
     ! correct v (all inner nodes), no need on the node at the faces (BC)
     do j=2,ny
       jm=j-1
-      v(i,j)=v(i,j) - dt/rho*(p(i,j)-p(i,jm))*dyi
+      v(i,j)=v(i,j) - dt*rhoi*(p(i,j)-p(i,jm))*dyi
     enddo
   enddo
   !$acc end kernels
@@ -569,6 +570,21 @@ do t=tstart,tfin
       vmax=max(vmax,v(i,j))
     enddo
   enddo
+
+  !maxdiv=0.d0
+  !!$acc kernels
+  !do j=1,ny-1
+  !  do i=1,nx
+  !    ip=i+1
+  !    jp=j+1
+  !    if (ip .gt. nx) ip=1
+  !    div(i,j) =            (u(ip,j)-u(i,j))
+  !    div(i,j) = div(i,j) + (v(i,jp)-v(i,j))
+  !    maxdiv = max(maxdiv,abs(div(i,j)))
+  !  enddo
+  !enddo
+  !!$acc end kernels
+  !write(*,*) "Max divergence after correction:", maxdiv
 
   !##########################################################
   !END 3C: End correction step
