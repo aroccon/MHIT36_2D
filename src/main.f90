@@ -23,9 +23,8 @@ double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.
 !double precision, parameter ::  alpha(3) = (/ 1.d0,         3.d0/4.d0,    1.d0/3.d0 /) !rk3 ssp coef
 !double precision, parameter ::  beta(3)  = (/ 0.d0,         1.d0/4.d0,    2.d0/3.d0 /) !rk3 ssp coef
 
-#define phiflag 0
-#define tempflag 1
-#define impdifftemp 0
+#define phiflag 1
+#define tempflag 0
 
 call readinput
 
@@ -220,10 +219,6 @@ do t=tstart,tfin
       phi(i,j) = phi(i,j)  + dt*rhsphi(i,j);
     enddo
   enddo
-  !$acc end kernels
-
-  ! impose BC on the phase-field (no flux at the walls)
-  !$acc kernels
   do i=1,nx
     phi(i,0) = phi(i,1)
     phi(i,ny+1) = phi(i,ny)
@@ -254,16 +249,9 @@ do t=tstart,tfin
         jm=j-1
         if (ip .gt. nx) ip=1
         if (im .lt. 1) im=nx
-        ! add advection contribution
+        ! add advection + diffusion contributions
         rhstemp(i,j)=-(u(ip,j)*0.5*(temp(ip,j)+temp(i,j)) - u(i,j)*0.5*(temp(i,j)+temp(im,j)))*dxi -(v(i,jp)*0.5*(temp(i,jp)+temp(i,j)) - v(i,j)*0.5*(temp(i,j)+temp(i,jm)))*dyi
-        ! all diffusive contributions explicit
-        #if impdifftemp == 0 
         rhstemp(i,j)=rhstemp(i,j) + difftemp*((temp(ip,j)-2.d0*temp(i,j)+temp(im,j))*ddxi + (temp(i,jp) -2.d0*temp(i,j) +temp(i,jm))*ddyi)   
-        #endif
-        ! x diffusive contribution explicit and y diffusive implicit (CN)
-        #if impdifftemp == 1
-        rhstemp(i,j)=rhstemp(i,j) + difftemp*(temp(ip,j)-2.d0*temp(i,j)+temp(im,j))*ddxi 
-        #endif
       enddo
     enddo
     ! New provisional temperature field
@@ -280,59 +268,6 @@ do t=tstart,tfin
     enddo
     !$acc end kernels
   enddo
-
-  #if impdifftemp == 1
-  ! add the y diffusive of temperature implicit
-  lambda = 0.5d0*difftemp*dt*ddyi ! then move in readinput
-  !$acc parallel loop gang vector present(af, bf, cf, df, solf)
-  do i=1,nx
-    ! Build TDMA arrays for interior points only
-    do j=1,ny
-      af(i,j) = -lambda
-      bf(i,j) =  1.0d0 + 2.0d0*lambda
-      cf(i,j) = -lambda
-      df(i,j) =  temp(i,j) + lambda*(temp(i,j+1)-2.0d0*temp(i,j) + temp(i,j-1))
-    enddo
-
-    ! Bottom boundary (j=1)
-    af(i,1) = 0.0d0
-    bf(i,1) = 1.0d0 + lambda
-    cf(i,1) = -lambda
-    df(i,1) = temp(i,1) + 2.0d0*lambda*tbot !0.5d0 is the bottom BC
-    ! Top boundary (j=ny)
-    af(i,ny) = -lambda
-    bf(i,ny) = 1.0d0 + lambda
-    cf(i,ny) = 0.0d0
-    df(i,ny) = temp(i,ny) + 2.0d0*lambda*ttop
-
-    ! TDMA SOLVER - Forward sweep
-    !$acc loop seq
-    do j = 2, ny
-      factor = af(i,j)/bf(i,j-1)
-      bf(i,j) = bf(i,j) - factor*cf(i,j-1)
-      df(i,j) = df(i,j) - factor*df(i,j-1)
-    enddo
-    ! Back substitution
-    solf(i,ny) = df(i,ny)/bf(i,ny)
-    !$acc loop seq
-    do j=ny-1, 1, -1
-      solf(i,j) = (df(i,j) - cf(i,j)*solf(i,j+1))/bf(i,j)
-    end do
-    do j=1, ny
-      temp(i,j)=solf(i,j)
-    enddo
-  enddo
-  #endif
-  ! compute bottom and top nusselt numbers
-  nut=0.0d0
-  nub=0.0d0
-  !$acc parallel loop reduction(+:nut,nub)
-  do i=1,nx
-    nut=nut + (temp(i,0)-temp(i,1))*dyi
-    nub=nub + (temp(i,ny)-temp(i,ny+1))*dyi
-  enddo
-  nut=nut/nx*ly
-  nub=nub/nx*ly
   #endif
   !##########################################################
   ! END 2: Temperature at n+1 obtained
@@ -356,11 +291,22 @@ do t=tstart,tfin
         jm=j-1
         if (ip .gt. nx) ip=1
         if (im .lt. 1) im=nx
-        ! compute the advection term (conservative form)
-        h11 = 0.25d0*((u(ip,j)+u(i,j))*(u(ip,j)+u(i,j))     - (u(i,j)+u(im,j))*(u(i,j)+u(im,j)))*dxi
-        h12 = 0.25d0*((u(i,jp)+u(i,j))*(v(i,jp)+v(im,jp))   - (u(i,j)+u(i,jm))*(v(i,j)+v(im,j)))*dyi
-        h21 = 0.25d0*((u(ip,j)+u(ip,jm))*(v(ip,j)+v(i,j))   - (u(i,j)+u(i,jm))*(v(i,j)+v(im,j)))*dxi
-        h22 = 0.25d0*((v(i,jp)+v(i,j))*(v(i,jp)+v(i,j))     - (v(i,j)+v(i,jm))*(v(i,j)+v(i,jm)))*dyi
+        ! h11
+        rhoxp=rhol*phi(i,j)    + rhov*(1.d0-phi(i,j))
+        rhoxm=rhol*phi(im,j)   + rhov*(1.d0-phi(im,j))
+        h11 = 0.25d0*(rhoxp*(u(ip,j)+u(i,j))*(u(ip,j)+u(i,j))     - rhoxm*(u(i,j)+u(im,j))*(u(i,j)+u(im,j)))*dxi
+        ! h12
+        rhoxp=rhol*0.25d0*(phi(i,j)+phi(im,j)+phi(i,jp)+phi(im,jp))   + rhov*(1.d0-0.25d0*(phi(i,j)+phi(im,j)+phi(i,jp)+phi(im,jp)))
+        rhoxm=rhol*0.25d0*(phi(i,j)+phi(im,j)+phi(i,jm)+phi(im,jm))   + rhov*(1.d0-0.25d0*(phi(i,j)+phi(im,j)+phi(i,jm)+phi(im,jm)))
+        h12 = 0.25d0*(rhoxp*(u(i,jp)+u(i,j))*(v(i,jp)+v(im,jp))   - rhoxm*(u(i,j)+u(i,jm))*(v(i,j)+v(im,j)))*dyi
+        ! h21        
+        rhoxp=rhol*0.25d0*(phi(i,j)+phi(i,jm)+phi(ip,j)+phi(ip,jm))   + rhov*(1.d0-0.25d0*(phi(i,j)+phi(i,jm)+phi(ip,j)+phi(ip,jm)))
+        rhoxm=rhol*0.25d0*(phi(i,j)+phi(i,jm)+phi(im,j)+phi(im,jm))   + rhov*(1.d0-0.25d0*(phi(i,j)+phi(i,jm)+phi(im,j)+phi(im,jm)))
+        h21 = 0.25d0*(rhoxp*(u(ip,j)+u(ip,jm))*(v(ip,j)+v(i,j))   - rhoxm*(u(i,j)+u(i,jm))*(v(i,j)+v(im,j)))*dxi
+        ! h22
+        rhoxp=rhol*phi(i,j)    + rhov*(1.d0-phi(i,j))
+        rhoxm=rhol*phi(i,jm)   + rhov*(1.d0-phi(i,jm))
+        h22 = 0.25d0*(rhoxp*(v(i,jp)+v(i,j))*(v(i,jp)+v(i,j))     - rhoxm*(v(i,j)+v(i,jm))*(v(i,j)+v(i,jm)))*dyi
         ! add advection to the rhs
         rhsu(i,j)=-(h11+h12)
         rhsv(i,j)=-(h21+h22)
@@ -377,7 +323,7 @@ do t=tstart,tfin
         #endif
         ! channel pressure driven (along x)
         !rhsu(i,j)=rhsu(i,j) + 1.d0
-        ! add old pressure
+        ! add old pressure (not required?)
         !rhsu(i,j)=rhsu(i,j) - rhoi*(pold(i,j)-pold(im,j))*dxi
         !rhsv(i,j)=rhsv(i,j) - rhoi*(pold(i,j)-pold(i,jm))*dyi
       enddo
@@ -478,26 +424,18 @@ do t=tstart,tfin
     ! Fill diagonals and rhs for each y
     do j = 1, ny
       a(i,j) =  1.0d0*ddyi
-      b(i,j) = -2.0d0*ddyi - kx2(i)
+      b(i,j) = -2.0d0*ddyi  + 2.d0*(cos(kx(i)*dx)-1.d0)*dxi*dxi 
       c(i,j) =  1.0d0*ddyi
       d(i,j) =  rhspc(i,j)
     end do
     ! Neumann BC at j=0 (ghost and first interior)
-    b(i,0) = -1.0d0!*ddyi - kx2(i)
-    c(i,0) =  1.0d0!*ddyi
+    b(i,0) = -1.0d0
+    c(i,0) =  1.0d0
     a(i,0) =  0.0d0
-    ! Neumann BC at j=ny (top)
-    a(i,ny+1) =  1.0d0!*ddyi
-    b(i,ny+1) = -1.0d0!*ddyi - kx2(i)
+    ! Dirilecht BC at j=ny (top) p(ny+1)+p(ny)=2*ptop
+    a(i,ny+1) =  1.0d0
+    b(i,ny+1) =  1.0d0
     c(i,ny+1) =  0.0d0
-    ! Special handling for kx=0 (mean mode)
-    ! fix pressure on one point (otherwise is zero mean along x)
-    if (i == 1) then
-        b(i,1) = 1.0d0
-        c(i,1) = 0.0d0
-        d(i,1) = 0.0d0
-    endif
-    ! Thomas algorithm (TDMA) for tridiagonal system 
     ! Forward sweep
     do j = 1, ny+1
       factor = a(i,j)/b(i,j-1)
