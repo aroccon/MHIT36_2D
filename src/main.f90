@@ -291,22 +291,11 @@ do t=tstart,tfin
         jm=j-1
         if (ip .gt. nx) ip=1
         if (im .lt. 1) im=nx
-        ! h11
-        rhoxp=rhol*phi(i,j)    + rhov*(1.d0-phi(i,j))
-        rhoxm=rhol*phi(im,j)   + rhov*(1.d0-phi(im,j))
-        h11 = 0.25d0*(rhoxp*(u(ip,j)+u(i,j))*(u(ip,j)+u(i,j))     - rhoxm*(u(i,j)+u(im,j))*(u(i,j)+u(im,j)))*dxi
-        ! h12
-        rhoxp=rhol*0.25d0*(phi(i,j)+phi(im,j)+phi(i,jp)+phi(im,jp))   + rhov*(1.d0-0.25d0*(phi(i,j)+phi(im,j)+phi(i,jp)+phi(im,jp)))
-        rhoxm=rhol*0.25d0*(phi(i,j)+phi(im,j)+phi(i,jm)+phi(im,jm))   + rhov*(1.d0-0.25d0*(phi(i,j)+phi(im,j)+phi(i,jm)+phi(im,jm)))
-        h12 = 0.25d0*(rhoxp*(u(i,jp)+u(i,j))*(v(i,jp)+v(im,jp))   - rhoxm*(u(i,j)+u(i,jm))*(v(i,j)+v(im,j)))*dyi
-        ! h21        
-        rhoxp=rhol*0.25d0*(phi(i,j)+phi(i,jm)+phi(ip,j)+phi(ip,jm))   + rhov*(1.d0-0.25d0*(phi(i,j)+phi(i,jm)+phi(ip,j)+phi(ip,jm)))
-        rhoxm=rhol*0.25d0*(phi(i,j)+phi(i,jm)+phi(im,j)+phi(im,jm))   + rhov*(1.d0-0.25d0*(phi(i,j)+phi(i,jm)+phi(im,j)+phi(im,jm)))
-        h21 = 0.25d0*(rhoxp*(u(ip,j)+u(ip,jm))*(v(ip,j)+v(i,j))   - rhoxm*(u(i,j)+u(i,jm))*(v(i,j)+v(im,j)))*dxi
-        ! h22
-        rhoxp=rhol*phi(i,j)    + rhov*(1.d0-phi(i,j))
-        rhoxm=rhol*phi(i,jm)   + rhov*(1.d0-phi(i,jm))
-        h22 = 0.25d0*(rhoxp*(v(i,jp)+v(i,j))*(v(i,jp)+v(i,j))     - rhoxm*(v(i,j)+v(i,jm))*(v(i,j)+v(i,jm)))*dyi
+        ! compute the advection term (conservative form)
+        h11 = 0.25d0*((u(ip,j)+u(i,j))*(u(ip,j)+u(i,j))     - (u(i,j)+u(im,j))*(u(i,j)+u(im,j)))*dxi
+        h12 = 0.25d0*((u(i,jp)+u(i,j))*(v(i,jp)+v(im,jp))   - (u(i,j)+u(i,jm))*(v(i,j)+v(im,j)))*dyi
+        h21 = 0.25d0*((u(ip,j)+u(ip,jm))*(v(ip,j)+v(i,j))   - (u(i,j)+u(i,jm))*(v(i,j)+v(im,j)))*dxi
+        h22 = 0.25d0*((v(i,jp)+v(i,j))*(v(i,jp)+v(i,j))     - (v(i,j)+v(i,jm))*(v(i,j)+v(i,jm)))*dyi
         ! add advection to the rhs
         rhsu(i,j)=-(h11+h12)
         rhsv(i,j)=-(h21+h22)
