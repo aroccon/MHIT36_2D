@@ -23,8 +23,8 @@ double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.
 !double precision, parameter ::  alpha(3) = (/ 1.d0,         3.d0/4.d0,    1.d0/3.d0 /) !rk3 ssp coef
 !double precision, parameter ::  beta(3)  = (/ 0.d0,         1.d0/4.d0,    2.d0/3.d0 /) !rk3 ssp coef
 
-#define phiflag 1
-#define tempflag 0
+#define phiflag 0
+#define tempflag 1
 
 call readinput
 
@@ -47,9 +47,6 @@ allocate(div(nx,ny))
 
 ! tdma variables (separated becasue they have different size)
 allocate(a(nx/2+1,0:ny+1),b(nx/2+1,0:ny+1),c(nx/2+1,0:ny+1),d(nx/2+1,0:ny+1),sol(nx/2+1,0:ny+1)) ! pressure
-#if impdifftemp == 1
-allocate(af(nx,0:ny+1),bf(nx,0:ny+1),cf(nx,0:ny+1),df(nx,0:ny+1),solf(nx,0:ny+1)) ! temperature
-#endif
 
 ! phase-field variables (defined on centers)
 ! add 0:ny+1, i.e. ghost nodes also for phi?
@@ -238,7 +235,7 @@ do t=tstart,tfin
   !##########################################################
   #if tempflag == 1
   ! Advection + diffusion (one loop, faster on GPU)
-  tempn=temp !tempn is the temperature at time step n (the initial one)
+  !tempn=temp !tempn is the temperature at time step n (the initial one)
   do stage=1,3
     !$acc kernels
     do j=1,ny
@@ -267,6 +264,16 @@ do t=tstart,tfin
       temp(i,ny+1) =  2*ttop - temp(i,ny)
     enddo
     !$acc end kernels
+    ! compute bottom and top nusselt numbers
+    nut=0.0d0
+    nub=0.0d0
+    !$acc parallel loop reduction(+:nut,nub)
+    do i=1,nx
+      nut=nut + (temp(i,0)-temp(i,1))*dyi
+      nub=nub + (temp(i,ny)-temp(i,ny+1))*dyi
+    enddo
+    nut=nut/nx*ly
+    nub=nub/nx*ly
   enddo
   #endif
   !##########################################################
@@ -312,9 +319,6 @@ do t=tstart,tfin
         #endif
         ! channel pressure driven (along x)
         !rhsu(i,j)=rhsu(i,j) + 1.d0
-        ! add old pressure (not required?)
-        !rhsu(i,j)=rhsu(i,j) - rhoi*(pold(i,j)-pold(im,j))*dxi
-        !rhsv(i,j)=rhsv(i,j) - rhoi*(pold(i,j)-pold(i,jm))*dyi
       enddo
     enddo
     !$acc end kernels
@@ -418,13 +422,14 @@ do t=tstart,tfin
       d(i,j) =  rhspc(i,j)
     end do
     ! Neumann BC at j=0 (ghost and first interior)
+    a(i,0) =  0.0d0
     b(i,0) = -1.0d0
     c(i,0) =  1.0d0
-    a(i,0) =  0.0d0
     ! Dirilecht BC at j=ny (top) p(ny+1)+p(ny)=2*ptop
     a(i,ny+1) =  1.0d0
     b(i,ny+1) =  1.0d0
     c(i,ny+1) =  0.0d0
+    d(i,ny+1) =  0.0d0 
     ! Forward sweep
     do j = 1, ny+1
       factor = a(i,j)/b(i,j-1)
@@ -486,7 +491,7 @@ do t=tstart,tfin
   ! re-impose BCs on the flow field
   umax=0.d0
   vmax=0.d0
-  !$acc parallel loop collapse(1) reduction(+:umax,vmax)
+  !$acc parallel loop collapse(1) reduction(max:umax,vmax)
   do i=1,nx
     u(i,0)=    -u(i,1)
     u(i,ny+1)= -u(i,ny)
