@@ -7,10 +7,11 @@
 #SBATCH --gres=gpu:1
 #SBATCH --output=test.out
 #SBATCH -p boost_usr_prod
+#SBATCH --qos=boost_qos_dbg
 #SBATCH --error=test.err
 
 
 module load profile/candidate
 module load nvhpc/25.3
 
-./nemesi
+./mhit36

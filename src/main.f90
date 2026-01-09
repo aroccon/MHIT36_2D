@@ -174,6 +174,11 @@ do t=tstart,tfin
       ! Advection + diffusion
       rhsphi(i,j)=-(u(ip,j)*0.5*(phi(ip,j)+phi(i,j)) - u(i,j)*0.5*(phi(i,j)+phi(im,j)))*dxi -(v(i,jp)*0.5*(phi(i,jp)+phi(i,j)) - v(i,j)*0.5*(phi(i,j)+phi(i,jm)))*dyi
       rhsphi(i,j)=rhsphi(i,j) + gamma*eps*((phi(ip,j)-2.d0*phi(i,j)+phi(im,j))*ddxi + (phi(i,jp) -2.d0*phi(i,j) +phi(i,jm))*ddyi) 
+    enddo
+  enddo
+
+  do j=0,ny+1
+    do i=1,nx
       val = max(0.d0, min(phi(i,j), 1.d0)) ! avoid machine precision overshoots in phi that leads to problem with log
       psidi(i,j) = eps*log((val+enum)/(1.d0-val+enum))
     enddo
@@ -196,6 +201,12 @@ do t=tstart,tfin
       normy(i,j) = normy(i,j)*normod 
     enddo
   enddo
+
+  do i=1,nx
+    normy(i,0)    = normy(i,1)
+    normy(i,ny+1) = normy(i,ny)
+  enddo
+
   ! gamma computed from previous field (after NS)
   do i=1,nx
     do j=1,ny
