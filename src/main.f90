@@ -18,6 +18,7 @@ double precision, allocatable :: a(:,:), b(:,:), c(:,:) !TDMA pressure (real)
 double complex,   allocatable :: d(:,:), sol(:,:) !TDMA pressure (complex variables)
 double precision, allocatable :: af(:,:), bf(:,:), cf(:,:), df(:,:), solf(:,:) !TDMA temperature
 integer :: planf, planb, status, stage
+double precision :: flux_x_p, flux_x_m, flux_y_p, flux_y_m
 double precision, parameter ::  alpha(3)     = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /) !rk3 alpha coef
 double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12.d0/) ! rk3 beta coef
 !double precision, parameter ::  alpha(3) = (/ 1.d0,         3.d0/4.d0,    1.d0/3.d0 /) !rk3 ssp coef
@@ -118,6 +119,11 @@ if (icphi .eq. 1) then
   read(666) phi
   close(666)
 endif
+! impose BC on phase-field ghost nodes
+do i=1,nx
+  phi(i,0) = phi(i,1)
+  phi(i,ny+1) = phi(i,ny)
+enddo
 ! temperature (internal + boundaries)
 do j=1,ny
   do i=1,nx
@@ -216,9 +222,17 @@ do t=tstart,tfin
       jm=j-1
       if (ip .gt. nx) ip=1
       if (im .lt. 1) im=nx
-      rhsphi(i,j)=rhsphi(i,j)-gamma*((0.25d0*(1.d0-(tanh(0.5d0*psidi(ip,j)*epsi))**2)*normx(ip,j) - 0.25d0*(1.d0-(tanh(0.5d0*psidi(im,j)*epsi))**2)*normx(im,j))*0.5d0*dxi + &
-                                     (0.25d0*(1.d0-(tanh(0.5d0*psidi(i,jp)*epsi))**2)*normy(i,jp) - 0.25d0*(1.d0-(tanh(0.5d0*psidi(i,jm)*epsi))**2)*normy(i,jm))*0.5d0*dyi) 
-    enddo
+      ! sharpening flux along x
+      flux_x_p = 0.25d0*(1.d0-(tanh(0.5d0*psidi(ip,j)*epsi))**2)*normx(ip,j)
+      flux_x_m = 0.25d0*(1.d0-(tanh(0.5d0*psidi(im,j)*epsi))**2)*normx(im,j)
+      ! sharpening flux along y
+      flux_y_p = 0.25d0*(1.d0-(tanh(0.5d0*psidi(i,jp)*epsi))**2)*normy(i,jp)
+      flux_y_m = 0.25d0*(1.d0-(tanh(0.5d0*psidi(i,jm)*epsi))**2)*normy(i,jm)
+      ! zero-flux at the wall
+      if (j == ny) flux_y_p = -flux_y_m 
+      if (j == 1)  flux_y_m = -flux_y_p 
+      rhsphi(i,j) = rhsphi(i,j) - gamma*( (flux_x_p - flux_x_m)*0.5d0*dxi + (flux_y_p - flux_y_m)*0.5d0*dyi ) 
+    enddo    
   enddo
 
   ! phase-field n+1 (Euler explicit)
@@ -227,6 +241,7 @@ do t=tstart,tfin
       phi(i,j) = phi(i,j)  + dt*rhsphi(i,j);
     enddo
   enddo
+  ! impose BC on phase-field ghost nodes
   do i=1,nx
     phi(i,0) = phi(i,1)
     phi(i,ny+1) = phi(i,ny)
