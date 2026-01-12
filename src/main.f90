@@ -18,13 +18,13 @@ double precision, allocatable :: a(:,:), b(:,:), c(:,:) !TDMA pressure (real)
 double complex,   allocatable :: d(:,:), sol(:,:) !TDMA pressure (complex variables)
 double precision, allocatable :: af(:,:), bf(:,:), cf(:,:), df(:,:), solf(:,:) !TDMA temperature
 integer :: planf, planb, status, stage
-double precision :: flux_x_p, flux_x_m, flux_y_p, flux_y_m
+double precision :: fxp, fxm, fyp, fym
 double precision, parameter ::  alpha(3)     = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /) !rk3 alpha coef
 double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12.d0/) ! rk3 beta coef
 !double precision, parameter ::  alpha(3) = (/ 1.d0,         3.d0/4.d0,    1.d0/3.d0 /) !rk3 ssp coef
 !double precision, parameter ::  beta(3)  = (/ 0.d0,         1.d0/4.d0,    2.d0/3.d0 /) !rk3 ssp coef
 
-#define phiflag 0
+#define phiflag 1
 #define tempflag 1
 
 call readinput
@@ -179,15 +179,16 @@ do t=tstart,tfin
       if (im .lt. 1) im=nx
       ! Advection + diffusion
       rhsphi(i,j)=-(u(ip,j)*0.5*(phi(ip,j)+phi(i,j)) - u(i,j)*0.5*(phi(i,j)+phi(im,j)))*dxi -(v(i,jp)*0.5*(phi(i,jp)+phi(i,j)) - v(i,j)*0.5*(phi(i,j)+phi(i,jm)))*dyi
-      rhsphi(i,j)=rhsphi(i,j) + gamma*eps*((phi(ip,j)-2.d0*phi(i,j)+phi(im,j))*ddxi + (phi(i,jp) -2.d0*phi(i,j) +phi(i,jm))*ddyi) 
     enddo
   enddo
 
-  do j=0,ny+1
-    do i=1,nx
+  do i=1,nx
+    do j=1,ny
       val = max(0.d0, min(phi(i,j), 1.d0)) ! avoid machine precision overshoots in phi that leads to problem with log
       psidi(i,j) = eps*log((val+enum)/(1.d0-val+enum))
     enddo
+    psidi(i,0)    = psidi(i,1)
+    psidi(i,ny+1) = psidi(i,ny)
   enddo
 
   ! compute normals from psidi
@@ -202,18 +203,13 @@ do t=tstart,tfin
       ! Compute normals
       normx(i,j) = 0.5d0*(psidi(ip,j)-psidi(im,j))*dxi
       normy(i,j) = 0.5d0*(psidi(i,jp)-psidi(i,jm))*dyi
-      normod = 1.0d0/(sqrt(normx(i,j)**2d0 + normy(i,j)**2d0) + enum)
+      normod = 1.0d0/(sqrt(normx(i,j)**2 + normy(i,j)**2) + enum)
       normx(i,j) = normx(i,j)*normod
       normy(i,j) = normy(i,j)*normod 
     enddo
   enddo
 
-  do i=1,nx
-    normy(i,0)    = normy(i,1)
-    normy(i,ny+1) = normy(i,ny)
-  enddo
-
-  ! gamma computed from previous field (after NS)
+  ! diffusive term (computed as the divergence of a flux)
   do i=1,nx
     do j=1,ny
       ip=i+1
@@ -222,26 +218,38 @@ do t=tstart,tfin
       jm=j-1
       if (ip .gt. nx) ip=1
       if (im .lt. 1) im=nx
-      ! sharpening flux along x
-      flux_x_p = 0.25d0*(1.d0-(tanh(0.5d0*psidi(ip,j)*epsi))**2)*normx(ip,j)
-      flux_x_m = 0.25d0*(1.d0-(tanh(0.5d0*psidi(im,j)*epsi))**2)*normx(im,j)
-      ! sharpening flux along y
-      flux_y_p = 0.25d0*(1.d0-(tanh(0.5d0*psidi(i,jp)*epsi))**2)*normy(i,jp)
-      flux_y_m = 0.25d0*(1.d0-(tanh(0.5d0*psidi(i,jm)*epsi))**2)*normy(i,jm)
-      ! zero-flux at the wall
-      if (j == ny) flux_y_p = -flux_y_m 
-      if (j == 1)  flux_y_m = -flux_y_p 
-      rhsphi(i,j) = rhsphi(i,j) - gamma*( (flux_x_p - flux_x_m)*0.5d0*dxi + (flux_y_p - flux_y_m)*0.5d0*dyi ) 
-    enddo    
+      fxp = gamma*eps*(phi(ip,j)-phi(i,j))*dxi
+      fxm = gamma*eps*(phi(i,j)-phi(im,j))*dxi
+      fyp = gamma*eps*(phi(i,jp)-phi(i,j))*dyi
+      fym = gamma*eps*(phi(i,j)-phi(i,jm))*dyi
+      rhsphi(i,j) = rhsphi(i,j) + (fxp - fxm)*dxi  + (fyp - fym)*dyi
+    enddo   
+  enddo
+
+  ! compressive term (computed as the divergence of a flux)
+  do i=1,nx
+    do j=1,ny
+      ip=i+1
+      im=i-1
+      jp=j+1
+      jm=j-1
+      if (ip .gt. nx) ip=1
+      if (im .lt. 1) im=nx
+      fxp = gamma*0.25d0*(1.d0 - tanh(0.5d0*psidi(ip,j)*epsi)**2)*normx(ip,j)
+      fxm = gamma*0.25d0*(1.d0 - tanh(0.5d0*psidi(im,j)*epsi)**2)*normx(im,j)
+      fyp = gamma*0.25d0*(1.d0 - tanh(0.5d0*psidi(i,jp)*epsi)**2)*normy(i,jp)
+      fym = gamma*0.25d0*(1.d0 - tanh(0.5d0*psidi(i,jm)*epsi)**2)*normy(i,jm)
+      rhsphi(i,j) = rhsphi(i,j) - (fxp - fxm)*dxi - (fyp - fym)*dyi
+    enddo   
   enddo
 
   ! phase-field n+1 (Euler explicit)
   do j=1,ny
     do i=1,nx
-      phi(i,j) = phi(i,j)  + dt*rhsphi(i,j);
+      phi(i,j) = phi(i,j)  + dt*rhsphi(i,j)
+      !phi(i,j) = max(0.d0, min(phi(i,j), 1.d0))
     enddo
   enddo
-  ! impose BC on phase-field ghost nodes
   do i=1,nx
     phi(i,0) = phi(i,1)
     phi(i,ny+1) = phi(i,ny)
