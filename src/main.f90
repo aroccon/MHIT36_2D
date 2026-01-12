@@ -168,7 +168,7 @@ do t=tstart,tfin
   ! Advection + diffusion term
   gamma=1.0d0*max(umax,vmax)
   write(*,*) "gamma", gamma
-  !$acc kernels
+    !$acc kernels
   do j=1,ny
     do i=1,nx
       ip=i+1
@@ -177,7 +177,6 @@ do t=tstart,tfin
       jm=j-1
       if (ip .gt. nx) ip=1
       if (im .lt. 1) im=nx
-      ! Advection + diffusion
       rhsphi(i,j)=-(u(ip,j)*0.5*(phi(ip,j)+phi(i,j)) - u(i,j)*0.5*(phi(i,j)+phi(im,j)))*dxi -(v(i,jp)*0.5*(phi(i,jp)+phi(i,j)) - v(i,j)*0.5*(phi(i,j)+phi(i,jm)))*dyi
     enddo
   enddo
@@ -187,8 +186,11 @@ do t=tstart,tfin
       val = max(0.d0, min(phi(i,j), 1.d0)) ! avoid machine precision overshoots in phi that leads to problem with log
       psidi(i,j) = eps*log((val+enum)/(1.d0-val+enum))
     enddo
+    ! impose BC
     psidi(i,0)    = psidi(i,1)
     psidi(i,ny+1) = psidi(i,ny)
+    phi(i,0) = phi(i,1)
+    phi(i,ny+1) = phi(i,ny)
   enddo
 
   ! compute normals from psidi
@@ -209,7 +211,7 @@ do t=tstart,tfin
     enddo
   enddo
 
-  ! diffusive term (computed as the divergence of a flux)
+  ! diffusive and sharpening terms (computed as the divergence of a flux to better impose BCs)
   do i=1,nx
     do j=1,ny
       ip=i+1
@@ -218,36 +220,27 @@ do t=tstart,tfin
       jm=j-1
       if (ip .gt. nx) ip=1
       if (im .lt. 1) im=nx
+      ! diffusion
       fxp = gamma*eps*(phi(ip,j)-phi(i,j))*dxi
       fxm = gamma*eps*(phi(i,j)-phi(im,j))*dxi
       fyp = gamma*eps*(phi(i,jp)-phi(i,j))*dyi
       fym = gamma*eps*(phi(i,j)-phi(i,jm))*dyi
       rhsphi(i,j) = rhsphi(i,j) + (fxp - fxm)*dxi  + (fyp - fym)*dyi
-    enddo   
-  enddo
-
-  ! compressive term (computed as the divergence of a flux)
-  do i=1,nx
-    do j=1,ny
-      ip=i+1
-      im=i-1
-      jp=j+1
-      jm=j-1
-      if (ip .gt. nx) ip=1
-      if (im .lt. 1) im=nx
-      fxp = gamma*0.25d0*(1.d0 - tanh(0.5d0*psidi(ip,j)*epsi)**2)*normx(ip,j)
-      fxm = gamma*0.25d0*(1.d0 - tanh(0.5d0*psidi(im,j)*epsi)**2)*normx(im,j)
-      fyp = gamma*0.25d0*(1.d0 - tanh(0.5d0*psidi(i,jp)*epsi)**2)*normy(i,jp)
-      fym = gamma*0.25d0*(1.d0 - tanh(0.5d0*psidi(i,jm)*epsi)**2)*normy(i,jm)
+      ! sharpening
+      fxp = gamma*0.25d0*(1.d0 - tanh(0.25d0*(psidi(i,j)+psidi(ip,j))*epsi)**2)*0.5d0*(normx(i,j)+normx(ip,j))
+      fxm = gamma*0.25d0*(1.d0 - tanh(0.25d0*(psidi(i,j)+psidi(im,j))*epsi)**2)*0.5d0*(normx(i,j)+normx(im,j))
+      fyp = gamma*0.25d0*(1.d0 - tanh(0.25d0*(psidi(i,j)+psidi(i,jp))*epsi)**2)*0.5d0*(normy(i,j)+normy(i,jp))
+      fym = gamma*0.25d0*(1.d0 - tanh(0.25d0*(psidi(i,j)+psidi(i,jm))*epsi)**2)*0.5d0*(normy(i,j)+normy(i,jm))
+      if (j == 1)  fym=0.d0
+      if (j == ny) fyp=0.d0
       rhsphi(i,j) = rhsphi(i,j) - (fxp - fxm)*dxi - (fyp - fym)*dyi
     enddo   
   enddo
 
-  ! phase-field n+1 (Euler explicit)
+  ! First stage update
   do j=1,ny
     do i=1,nx
       phi(i,j) = phi(i,j)  + dt*rhsphi(i,j)
-      !phi(i,j) = max(0.d0, min(phi(i,j), 1.d0))
     enddo
   enddo
   do i=1,nx

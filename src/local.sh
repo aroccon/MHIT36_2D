@@ -6,7 +6,7 @@ export PATH=$NVCOMPILERS/$NVARCH/25.7/comm_libs/mpi/bin:$PATH
 export MANPATH=$MANPATH:$NVCOMPILERS/$NVARCH/25.7/comm_libs/mpi/man
 cp Makefile_local Makefile
 rm *.mod
-rm nemesi
+rm mhit36
 make
 
 rm -rf output
@@ -15,4 +15,4 @@ rm *.o
 #rm *.dat
 
 #run the code
-./nemesi
+./mhit36
