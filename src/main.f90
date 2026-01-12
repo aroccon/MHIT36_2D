@@ -211,6 +211,11 @@ do t=tstart,tfin
     enddo
   enddo
 
+  do i=1,nx
+    normy(i,0) = normy(i,1)
+    normy(i,ny+1) = normy(i,ny)
+  enddo
+
   ! diffusive and sharpening terms (computed as the divergence of a flux to better impose BCs)
   do i=1,nx
     do j=1,ny
