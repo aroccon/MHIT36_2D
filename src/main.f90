@@ -19,8 +19,12 @@ double complex,   allocatable :: d(:,:), sol(:,:) !TDMA pressure (complex variab
 double precision, allocatable :: af(:,:), bf(:,:), cf(:,:), df(:,:), solf(:,:) !TDMA temperature
 integer :: planf, planb, status, stage
 double precision :: fxp, fxm, fyp, fym, mass
-double precision, parameter ::  alpha(3)     = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /) !rk3 alpha coef
-double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12.d0/) ! rk3 beta coef
+! RK3 Coefficeients: Spalart-Allmara 3-stage LSRK3
+double precision, parameter ::  alpha(3)     = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /) 
+double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12.d0/) 
+! RK4 Coefficeients: Carpenter-Kennedy 5-stage LSRK4
+double precision, parameter ::  rk4a(5)     = (/ 0.d0,       -567301805773.d0/1357537059087.d0, -2404267990393.d0/2016746695238.d0, -3550918686646.d0/2091501179385.d0, -1275806237668.d0/842570457699.d0 /)
+double precision, parameter ::  rk4b(5)     = (/ 1432997174477.d0/9575080441755.d0, 5161836677717.d0/13612068292357.d0, 1720146321549.d0/2090206949498.d0, 3134564353537.d0/4481467310338.d0, 2277821191437.d0/14882151754819.d0 /)
 
 #define phiflag 1
 #define tempflag 1
@@ -49,10 +53,9 @@ allocate(a(nx/2+1,0:ny+1),b(nx/2+1,0:ny+1),c(nx/2+1,0:ny+1),d(nx/2+1,0:ny+1),sol
 
 ! phase-field variables (defined on centers)
 ! add 0:ny+1, i.e. ghost nodes also for phi?
-allocate(phi(nx,0:ny+1),rhsphi(nx,0:ny+1),psidi(nx,0:ny+1))
+allocate(phi(nx,0:ny+1),rhsphi(nx,0:ny+1),psidi(nx,0:ny+1),q_phi(nx,0:ny+1))
 allocate(normx(nx,0:ny+1),normy(nx,0:ny+1))
 allocate(fxst(nx,ny),fyst(nx,ny))
-allocate(phi_old(nx,0:ny+1),rhsphi_stage1(nx,0:ny+1))
 
 ! temperature variables (defined on centers)
 allocate(temp(nx,0:ny+1),rhstemp(nx,0:ny+1),rhstemp_o(nx,0:ny+1))
@@ -163,17 +166,20 @@ do t=tstart,tfin
   call cpu_time(times)
   write(*,*) "Time step",t,"of",tfin
   #if phiflag == 1
-  ! --- RK2 INITIALIZATION ---
   gamma = 1.d0 * max(umax, vmax)
-  ! Store phi^n and original mass for later
-  phi_old = phi 
   
-  do stage = 1, 2
+  !$acc kernels
+  q_phi = 0.d0
+  !$acc end kernels
+
+  do stage = 1, 5  ! Changed from 3 to 5
     !$acc kernels
+
+    ! -- 1. Compute normals
     do i=1,nx
       do j=1,ny
-        val = max(0.d0, min(phi(i,j), 1.d0))
-        psidi(i,j) = eps * log((val+enum)/(1.d0-val+enum))
+        val = max(1.d-10, min(phi(i,j), 1.d0 - 1.d-10))
+        psidi(i,j) = eps * log(val / (1.d0 - val))
       enddo
       psidi(i,0)    = psidi(i,1)
       psidi(i,ny+1) = psidi(i,ny)
@@ -189,17 +195,19 @@ do t=tstart,tfin
         if (j == 1 .or. j == ny) normy(i,j) = 0.d0
         normod = 1.0d0/(sqrt(normx(i,j)**2 + normy(i,j)**2) + enum)
         normx(i,j) = normx(i,j)*normod
-        normy(i,j) = normy(i,j)*normod 
+        normy(i,j) = normy(i,j)*normod
       enddo
     enddo
 
-    ! 2. COMPUTE RHS (Advection + Diffusion + Sharpening)
+    do i=1,nx
+      normy(i,0) = normy(i,1)
+      normy(i,ny+1) = normy(i,ny)
+    enddo
+
+    ! --- 2. Compute RHS --- is already in skew-symmetric form?
     do j=1,ny
       do i=1,nx
-        ip=i+1 
-        im=i-1
-        jp=j+1 
-        jm=j-1
+        ip=i+1; im=i-1; jp=j+1; jm=j-1
         if (ip > nx) ip=1
         if (im < 1)  im=nx
         ! Advection
@@ -210,7 +218,7 @@ do t=tstart,tfin
         if (j == 1)  fym = 0.d0
         if (j == ny) fyp = 0.d0
         rhsphi(i,j) = - (fxp - fxm)*dxi  - (fyp - fym)*dyi
-        ! --- Diffusion ---
+        ! Diffusion
         fxp = gamma*eps*(phi(ip,j)-phi(i,j))*dxi
         fxm = gamma*eps*(phi(i,j)-phi(im,j))*dxi
         fyp = gamma*eps*(phi(i,jp)-phi(i,j))*dyi
@@ -218,7 +226,7 @@ do t=tstart,tfin
         if (j == 1)  fym = 0.d0
         if (j == ny) fyp = 0.d0
         rhsphi(i,j) = rhsphi(i,j) + (fxp - fxm)*dxi  + (fyp - fym)*dyi
-        ! --- Sharpening (Consistent Face Indices) ---
+        ! Sharpening
         fxp = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(i,j)+psidi(ip,j))*epsi)**2)*0.5d0*(normx(i,j)+normx(ip,j))
         fxm = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(im,j)+psidi(i,j))*epsi)**2)*0.5d0*(normx(im,j)+normx(i,j))
         fyp = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(i,j)+psidi(i,jp))*epsi)**2)*0.5d0*(normy(i,j)+normy(i,jp))
@@ -229,29 +237,23 @@ do t=tstart,tfin
       enddo
     enddo
 
-    ! 3. TIME UPDATE
-    if (stage == 1) then
-      ! Predictor: phi* = phi^n + dt*RHS(phi^n)
-      do j=1,ny 
-	do i=1,nx
-          phi(i,j) = phi_old(i,j) + dt*rhsphi(i,j)
-      	enddo
+    ! --- 3. LSRK4 UPDATE STEP ---
+    ! q = rk4a*q + dt*rhs
+    ! phi = phi + rk4b*q
+    do j=1,ny
+      do i=1,nx
+        q_phi(i,j) = rk4a(stage) * q_phi(i,j) + dt * rhsphi(i,j)
+        phi(i,j)   = phi(i,j)   + rk4b(stage) * q_phi(i,j)
       enddo
-      rhsphi_stage1 = rhsphi ! Store for Stage 2
-    else
-      ! Corrector: phi^n+1 = phi^n + 0.5*dt*(RHS1 + RHS2)
-      do j=1,ny; do i=1,nx
-        phi(i,j) = phi_old(i,j) + 0.5d0*dt*(rhsphi_stage1(i,j) + rhsphi(i,j))
-      enddo; enddo
-    endif
+    enddo
 
-    ! Update BCs for next stage or next step
+    ! --- 5. BOUNDARY CONDITIONS ---
     do i=1,nx
       phi(i,0) = phi(i,1)
       phi(i,ny+1) = phi(i,ny)
     enddo
     !$acc end kernels
-  enddo ! End RK2 Loop
+  enddo ! End Stage Loop
 
   !$acc kernels
   mass = 0.d0
@@ -261,10 +263,12 @@ do t=tstart,tfin
     enddo 
   enddo
   !$acc end kernels
+
   write(*,*) 'mass', mass
   write(*,*) "maxphi", maxval(phi)
 
-  #endif  !write(*,*) "Phase field", phi(32,32)
+  #endif
+  !write(*,*) "Phase field", phi(32,32)
   !##########################################################
   ! END 1: phase-field n+1 obtained
   !##########################################################
