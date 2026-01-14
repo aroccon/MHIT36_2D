@@ -18,11 +18,9 @@ double precision, allocatable :: a(:,:), b(:,:), c(:,:) !TDMA pressure (real)
 double complex,   allocatable :: d(:,:), sol(:,:) !TDMA pressure (complex variables)
 double precision, allocatable :: af(:,:), bf(:,:), cf(:,:), df(:,:), solf(:,:) !TDMA temperature
 integer :: planf, planb, status, stage
-double precision :: fxp, fxm, fyp, fym
+double precision :: fxp, fxm, fyp, fym, mass
 double precision, parameter ::  alpha(3)     = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /) !rk3 alpha coef
 double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12.d0/) ! rk3 beta coef
-!double precision, parameter ::  alpha(3) = (/ 1.d0,         3.d0/4.d0,    1.d0/3.d0 /) !rk3 ssp coef
-!double precision, parameter ::  beta(3)  = (/ 0.d0,         1.d0/4.d0,    2.d0/3.d0 /) !rk3 ssp coef
 
 #define phiflag 1
 #define tempflag 1
@@ -54,6 +52,7 @@ allocate(a(nx/2+1,0:ny+1),b(nx/2+1,0:ny+1),c(nx/2+1,0:ny+1),d(nx/2+1,0:ny+1),sol
 allocate(phi(nx,0:ny+1),rhsphi(nx,0:ny+1),psidi(nx,0:ny+1))
 allocate(normx(nx,0:ny+1),normy(nx,0:ny+1))
 allocate(fxst(nx,ny),fyst(nx,ny))
+allocate(phi_old(nx,0:ny+1),rhsphi_stage1(nx,0:ny+1))
 
 ! temperature variables (defined on centers)
 allocate(temp(nx,0:ny+1),rhstemp(nx,0:ny+1),rhstemp_o(nx,0:ny+1))
@@ -108,7 +107,9 @@ enddo
 if (icphi .eq. 0) then
   do i=1,nx
     do j=1,ny
-      pos=(x(i)-lx/2)**2d0 + (y(j)-ly/2)**2d0
+      !pos=(x(i)-lx/2)**2d0 + (y(j)-ly/2)**2
+      !pos=(x(i)-lx/2)**2d0 + (y(j)-ly)**2
+      pos= (y(j)-ly/2)**2
       phi(i,j)=0.5d0*(1.d0-tanh((sqrt(pos)-radius)/(2.d0*eps)))
     enddo
   enddo
@@ -162,100 +163,108 @@ do t=tstart,tfin
   call cpu_time(times)
   write(*,*) "Time step",t,"of",tfin
   #if phiflag == 1
-  !##########################################################
-  ! START 1: Advance phase-field 
-  !##########################################################
-  ! Advection + diffusion term
-  gamma=1.0d0*max(umax,vmax)
-  write(*,*) "gamma", gamma
+  ! --- RK2 INITIALIZATION ---
+  gamma = 1.d0 * max(umax, vmax)
+  ! Store phi^n and original mass for later
+  phi_old = phi 
+  
+  do stage = 1, 2
     !$acc kernels
-  do j=1,ny
     do i=1,nx
-      ip=i+1
-      im=i-1
-      jp=j+1
-      jm=j-1
-      if (ip .gt. nx) ip=1
-      if (im .lt. 1) im=nx
-      rhsphi(i,j)=-(u(ip,j)*0.5*(phi(ip,j)+phi(i,j)) - u(i,j)*0.5*(phi(i,j)+phi(im,j)))*dxi -(v(i,jp)*0.5*(phi(i,jp)+phi(i,j)) - v(i,j)*0.5*(phi(i,j)+phi(i,jm)))*dyi
+      do j=1,ny
+        val = max(0.d0, min(phi(i,j), 1.d0))
+        psidi(i,j) = eps * log((val+enum)/(1.d0-val+enum))
+      enddo
+      psidi(i,0)    = psidi(i,1)
+      psidi(i,ny+1) = psidi(i,ny)
     enddo
-  enddo
 
-  do i=1,nx
     do j=1,ny
-      val = max(0.d0, min(phi(i,j), 1.d0)) ! avoid machine precision overshoots in phi that leads to problem with log
-      psidi(i,j) = eps*log((val+enum)/(1.d0-val+enum))
+      do i=1,nx
+        ip=i+1; im=i-1; jp=j+1; jm=j-1
+        if (ip > nx) ip=1
+        if (im < 1)  im=nx
+        normx(i,j) = 0.5d0*(psidi(ip,j)-psidi(im,j))*dxi
+        normy(i,j) = 0.5d0*(psidi(i,jp)-psidi(i,jm))*dyi
+        if (j == 1 .or. j == ny) normy(i,j) = 0.d0
+        normod = 1.0d0/(sqrt(normx(i,j)**2 + normy(i,j)**2) + enum)
+        normx(i,j) = normx(i,j)*normod
+        normy(i,j) = normy(i,j)*normod 
+      enddo
     enddo
-    ! impose BC
-    psidi(i,0)    = psidi(i,1)
-    psidi(i,ny+1) = psidi(i,ny)
-    phi(i,0) = phi(i,1)
-    phi(i,ny+1) = phi(i,ny)
-  enddo
 
-  ! compute normals from psidi
-  do j=1,ny
-    do i=1,nx
-      ip=i+1
-      im=i-1
-      jp=j+1
-      jm=j-1
-      if (ip .gt. nx) ip=1
-      if (im .lt. 1) im=nx
-      ! Compute normals
-      normx(i,j) = 0.5d0*(psidi(ip,j)-psidi(im,j))*dxi
-      normy(i,j) = 0.5d0*(psidi(i,jp)-psidi(i,jm))*dyi
-      normod = 1.0d0/(sqrt(normx(i,j)**2 + normy(i,j)**2) + enum)
-      normx(i,j) = normx(i,j)*normod
-      normy(i,j) = normy(i,j)*normod 
-    enddo
-  enddo
-
-  do i=1,nx
-    normy(i,0) = normy(i,1)
-    normy(i,ny+1) = normy(i,ny)
-  enddo
-
-  ! diffusive and sharpening terms (computed as the divergence of a flux to better impose BCs)
-  do i=1,nx
+    ! 2. COMPUTE RHS (Advection + Diffusion + Sharpening)
     do j=1,ny
-      ip=i+1
-      im=i-1
-      jp=j+1
-      jm=j-1
-      if (ip .gt. nx) ip=1
-      if (im .lt. 1) im=nx
-      ! diffusion
-      fxp = gamma*eps*(phi(ip,j)-phi(i,j))*dxi
-      fxm = gamma*eps*(phi(i,j)-phi(im,j))*dxi
-      fyp = gamma*eps*(phi(i,jp)-phi(i,j))*dyi
-      fym = gamma*eps*(phi(i,j)-phi(i,jm))*dyi
-      rhsphi(i,j) = rhsphi(i,j) + (fxp - fxm)*dxi  + (fyp - fym)*dyi
-      ! sharpening
-      fxp = gamma*0.25d0*(1.d0 - tanh(0.25d0*(psidi(i,j)+psidi(ip,j))*epsi)**2)*0.5d0*(normx(i,j)+normx(ip,j))
-      fxm = gamma*0.25d0*(1.d0 - tanh(0.25d0*(psidi(i,j)+psidi(im,j))*epsi)**2)*0.5d0*(normx(i,j)+normx(im,j))
-      fyp = gamma*0.25d0*(1.d0 - tanh(0.25d0*(psidi(i,j)+psidi(i,jp))*epsi)**2)*0.5d0*(normy(i,j)+normy(i,jp))
-      fym = gamma*0.25d0*(1.d0 - tanh(0.25d0*(psidi(i,j)+psidi(i,jm))*epsi)**2)*0.5d0*(normy(i,j)+normy(i,jm))
-      if (j == 1)  fym=0.d0
-      if (j == ny) fyp=0.d0
-      rhsphi(i,j) = rhsphi(i,j) - (fxp - fxm)*dxi - (fyp - fym)*dyi
-    enddo   
-  enddo
+      do i=1,nx
+        ip=i+1 
+        im=i-1
+        jp=j+1 
+        jm=j-1
+        if (ip > nx) ip=1
+        if (im < 1)  im=nx
+        ! Advection
+        fxp = u(ip,j) * 0.5d0 * (phi(ip,j) + phi(i,j))
+        fxm = u(i,j)  * 0.5d0 * (phi(i,j)  + phi(im,j))
+        fyp = v(i,jp) * 0.5d0 * (phi(i,jp) + phi(i,j))
+        fym = v(i,j)  * 0.5d0 * (phi(i,j)  + phi(i,jm))
+        if (j == 1)  fym = 0.d0
+        if (j == ny) fyp = 0.d0
+        rhsphi(i,j) = - (fxp - fxm)*dxi  - (fyp - fym)*dyi
+        ! --- Diffusion ---
+        fxp = gamma*eps*(phi(ip,j)-phi(i,j))*dxi
+        fxm = gamma*eps*(phi(i,j)-phi(im,j))*dxi
+        fyp = gamma*eps*(phi(i,jp)-phi(i,j))*dyi
+        fym = gamma*eps*(phi(i,j)-phi(i,jm))*dyi
+        if (j == 1)  fym = 0.d0
+        if (j == ny) fyp = 0.d0
+        rhsphi(i,j) = rhsphi(i,j) + (fxp - fxm)*dxi  + (fyp - fym)*dyi
+        ! --- Sharpening (Consistent Face Indices) ---
+        fxp = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(i,j)+psidi(ip,j))*epsi)**2)*0.5d0*(normx(i,j)+normx(ip,j))
+        fxm = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(im,j)+psidi(i,j))*epsi)**2)*0.5d0*(normx(im,j)+normx(i,j))
+        fyp = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(i,j)+psidi(i,jp))*epsi)**2)*0.5d0*(normy(i,j)+normy(i,jp))
+        fym = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(i,jm)+psidi(i,j))*epsi)**2)*0.5d0*(normy(i,jm)+normy(i,j))
+        if (j == 1)  fym = 0.d0
+        if (j == ny) fyp = 0.d0
+        rhsphi(i,j) = rhsphi(i,j) - (fxp - fxm)*dxi  - (fyp - fym)*dyi
+      enddo
+    enddo
 
-  ! First stage update
+    ! 3. TIME UPDATE
+    if (stage == 1) then
+      ! Predictor: phi* = phi^n + dt*RHS(phi^n)
+      do j=1,ny 
+	do i=1,nx
+          phi(i,j) = phi_old(i,j) + dt*rhsphi(i,j)
+      	enddo
+      enddo
+      rhsphi_stage1 = rhsphi ! Store for Stage 2
+    else
+      ! Corrector: phi^n+1 = phi^n + 0.5*dt*(RHS1 + RHS2)
+      do j=1,ny; do i=1,nx
+        phi(i,j) = phi_old(i,j) + 0.5d0*dt*(rhsphi_stage1(i,j) + rhsphi(i,j))
+      enddo; enddo
+    endif
+
+    ! Update BCs for next stage or next step
+    do i=1,nx
+      phi(i,0) = phi(i,1)
+      phi(i,ny+1) = phi(i,ny)
+    enddo
+    !$acc end kernels
+  enddo ! End RK2 Loop
+
+  !$acc kernels
+  mass = 0.d0
   do j=1,ny
     do i=1,nx
-      phi(i,j) = phi(i,j)  + dt*rhsphi(i,j)
-    enddo
-  enddo
-  do i=1,nx
-    phi(i,0) = phi(i,1)
-    phi(i,ny+1) = phi(i,ny)
+      mass = mass + phi(i,j)
+    enddo 
   enddo
   !$acc end kernels
-  #endif
-  !write(*,*) "maxphi", maxval(phi)
-  !write(*,*) "Phase field", phi(32,32)
+  write(*,*) 'mass', mass
+  write(*,*) "maxphi", maxval(phi)
+
+  #endif  !write(*,*) "Phase field", phi(32,32)
   !##########################################################
   ! END 1: phase-field n+1 obtained
   !##########################################################
@@ -286,7 +295,7 @@ do t=tstart,tfin
     ! New provisional temperature field
     do j=1,ny
       do i=1,nx
-        temp(i,j) = temp(i,j)  + dt*(alpha(stage)*rhstemp(i,j)+ alpha(stage)*rhstemp_o(i,j))
+        temp(i,j) = temp(i,j)  + dt*(alpha(stage)*rhstemp(i,j)+ beta(stage)*rhstemp_o(i,j))
         rhstemp_o(i,j)=rhstemp(i,j)
       enddo
     enddo
@@ -517,8 +526,8 @@ do t=tstart,tfin
 
   cflx=umax*dt*dxi
   cfly=vmax*dt*dyi
-  write(*,*) "CFL number:", max(cflx,cfly)
-  write(*,*) "Nusselt (top, bottom)", nut, nub
+  !write(*,*) "CFL number:", max(cflx,cfly)
+  !write(*,*) "Nusselt (top, bottom)", nut, nub
 
   ! re-impose BCs on the flow field
   umax=0.d0
@@ -530,8 +539,8 @@ do t=tstart,tfin
     v(i,1)=0.0d0
     v(i,ny+1)=0.0d0
     do j=2,ny
-      umax=max(umax,u(i,j))
-      vmax=max(vmax,v(i,j))
+      umax=max(umax,abs(u(i,j)))
+      vmax=max(vmax,abs(v(i,j)))
     enddo
   enddo
 
@@ -577,10 +586,9 @@ do t=tstart,tfin
 enddo
 !$acc end data
 
-!write pressure (debug only)
-!open(unit=55,file='output/div.dat',form='unformatted',position='append',access='stream',status='new')
-!write(55) div
-!close(55)
+open(unit=55,file='output/out.dat',form='unformatted',position='append',access='stream',status='new')
+write(55) normx
+close(55)
 
 deallocate(x,y)
 !deallocate(a,b,c,d,sol)
