@@ -1,5 +1,5 @@
 module param
-  integer, parameter :: nx=1024, ny=256
+  integer, parameter :: nx=2048, ny=512
   double precision, parameter :: pi=3.141592653589793d0
   double precision :: dx, dy, lx, ly, acoeff, q, l2norm, err, dyi, factor, twopi
   double precision :: radius, eps, epsi, gamma, rho, mu, dxi, ddxi, ddyi, normod, dt

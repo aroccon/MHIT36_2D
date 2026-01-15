@@ -2,9 +2,9 @@
 Version of MHIT36 simpliefied to work in 2D (single GPU version)
 Numerical scheme: Finite difference-based (FD2).
 Time integration:
-- Temperature: SSP-RK3 + CN for Temperature along y (flag)
+- Temperature: RK3 + CN for Temperature along y (flag)
 - Navier-Stokes: RK3
-- Phase-field: RK3 (to be implemented)
+- Phase-field: RK4 (Carpenter-Kennedy) + skew-symmetric splitting
 - NS: Fractional method, Poisson solver based on FFT (along x - periodic) + TDMA (y, walls).
 
 
