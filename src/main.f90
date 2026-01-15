@@ -18,7 +18,7 @@ double precision, allocatable :: a(:,:), b(:,:), c(:,:) !TDMA pressure (real)
 double complex,   allocatable :: d(:,:), sol(:,:) !TDMA pressure (complex variables)
 double precision, allocatable :: af(:,:), bf(:,:), cf(:,:), df(:,:), solf(:,:) !TDMA temperature
 integer :: planf, planb, status, stage
-double precision :: fxp, fxm, fyp, fym, mass
+double precision :: fxp, fxm, fyp, fym
 ! RK3 Coefficeients: Spalart-Allmara 3-stage LSRK3
 double precision, parameter ::  alpha(3)     = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /) 
 double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12.d0/) 

@@ -1,5 +1,5 @@
 module param
-  integer, parameter :: nx=256, ny=128
+  integer, parameter :: nx=1024, ny=256
   double precision, parameter :: pi=3.141592653589793d0
   double precision :: dx, dy, lx, ly, acoeff, q, l2norm, err, dyi, factor, twopi
   double precision :: radius, eps, epsi, gamma, rho, mu, dxi, ddxi, ddyi, normod, dt
@@ -7,6 +7,7 @@ module param
   double precision :: chempot, curv, sigma, cflx, cfly, ra, pr, nut, nub, num, noise, enum
   double precision :: pos, epsr, times, timef, difftemp, h11, h12, h21, h22, rhoi, alphag
   double precision :: ttop, tbot
+  double precision :: mass, maxphi
   integer :: tstart, tfin, restart, dump, icphi
 end module param
 
@@ -17,7 +18,7 @@ module velocity
 end module velocity
 
 module phase
-    double precision, allocatable :: rhsphi(:,:), phi(:,:), psidi(:,:), normx(:,:), normy(:,:), fxst(:,:), fyst(:,:)
+    double precision, allocatable :: rhsphi(:,:), phi(:,:), q_phi(:,:), psidi(:,:), normx(:,:), normy(:,:), fxst(:,:), fyst(:,:)
 end module phase
 
 module temperature
