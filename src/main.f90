@@ -143,7 +143,7 @@ enddo
 ! output fields
 call writefield(tstart,1)
 call writefield(tstart,2)
-call writefield(tstart,3)
+!call writefield(tstart,3)
 #if phiflag == 1
 call writefield(tstart,4)
 #endif
@@ -176,13 +176,11 @@ do t=tstart,tfin
     !$acc kernels
 
     ! -- 1. Compute normals
-    do i=1,nx
-      do j=1,ny
+    do j=1,ny
+      do i=1,nx
         val = max(1.d-10, min(phi(i,j), 1.d0 - 1.d-10))
         psidi(i,j) = eps * log(val / (1.d0 - val))
       enddo
-      psidi(i,0)    = psidi(i,1)
-      psidi(i,ny+1) = psidi(i,ny)
     enddo
 
     do j=1,ny
@@ -257,15 +255,16 @@ do t=tstart,tfin
 
   !$acc kernels
   mass = 0.d0
+  maxphi = 0.d0
   do j=1,ny
     do i=1,nx
       mass = mass + phi(i,j)
+      maxphi = max(maxphi, phi(i,j))
     enddo 
   enddo
   !$acc end kernels
 
-  write(*,*) 'mass', mass
-  write(*,*) "maxphi", maxval(phi)
+  write(*,*) "maxphi", maxphi
 
   #endif
   !write(*,*) "Phase field", phi(32,32)
@@ -577,7 +576,7 @@ do t=tstart,tfin
     ! write velocity and pressure fiels (1-4)
 	  call writefield(t,1)
 	  call writefield(t,2)
-	  call writefield(t,3)
+	  !call writefield(t,3)
     #if phiflag == 1
     call writefield(t,4)
     #endif
@@ -590,9 +589,9 @@ do t=tstart,tfin
 enddo
 !$acc end data
 
-open(unit=55,file='output/out.dat',form='unformatted',position='append',access='stream',status='new')
-write(55) normx
-close(55)
+!open(unit=55,file='output/out.dat',form='unformatted',position='append',access='stream',status='new')
+!write(55) normx
+!close(55)
 
 deallocate(x,y)
 !deallocate(a,b,c,d,sol)
