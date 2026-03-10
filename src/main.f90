@@ -94,7 +94,7 @@ if (status.ne.0) write(*,*) "Error in cuFFT plan BWD:", status
 ! Initialize fields
 !##########################################################
 ! this is a fresh start, so initialize velocity, temperature and phase-field
-if (restart. eq. 0) then
+if (restart .eq. 0) then
   write(*,*) "Initialize velocity, temperature and phase-field"
   ! u velocity
   do i=1,nx
@@ -125,9 +125,41 @@ if (restart. eq. 0) then
     read(666) phi
     close(666)
   endif
+  ! temperature (internal + boundaries)
+  do j=1,ny
+    do i=1,nx
+      call random_number(noise)
+      temp(i,j) = 0.5d0 - y(j)/ly + 0.01d0*(2.0d0*noise - 1.0d0)
+    enddo
+  enddo
+  ! impose BC on phase-field ghost nodes
+  do i=1,nx
+    phi(i,0) = phi(i,1)
+    phi(i,ny+1) = phi(i,ny)
+  enddo
+  ! impose BC on temperature ghost nodes 
+  do i=1,nx
+    temp(i,0) =     2*tbot - temp(i,1)
+    temp(i,ny+1) =  2*ttop - temp(i,ny)
+  enddo
+
+  ! output fields
+  call writefield(tstart,1)
+  call writefield(tstart,2)
+  !call writefield(tstart,3)
+  #if phiflag == 1
+  call writefield(tstart,4)
+  #endif
+  # if tempflag == 1
+  call writefield(tstart,5)
+  call nucheck(tstart)
+  #endif
 endif
+
+
+
 ! this is a restart, so read velocity, temperature and phase-field from file
-if (restart. eq. 1) then
+if (restart .eq. 1) then
   call readfield_restart(tstart,1)
   call readfield_restart(tstart,2)
   #if phiflag == 1
@@ -137,35 +169,6 @@ if (restart. eq. 1) then
   call readfield_restart(tstart,5)
   #endif
 endif
-
-! impose BC on phase-field ghost nodes
-do i=1,nx
-  phi(i,0) = phi(i,1)
-  phi(i,ny+1) = phi(i,ny)
-enddo
-! temperature (internal + boundaries)
-do j=1,ny
-  do i=1,nx
-    call random_number(noise)
-    temp(i,j) = 0.5d0 - y(j)/ly + 0.01d0*(2.0d0*noise - 1.0d0)
-  enddo
-enddo
-! impose BC on the ghost nodes so to have at cell faces t=t_bc
-do i=1,nx
-  temp(i,0) =     2*tbot - temp(i,1)
-  temp(i,ny+1) =  2*ttop - temp(i,ny)
-enddo
-! output fields
-call writefield(tstart,1)
-call writefield(tstart,2)
-!call writefield(tstart,3)
-#if phiflag == 1
-call writefield(tstart,4)
-#endif
-# if tempflag == 1
-call writefield(tstart,5)
-call nucheck(tstart)
-#endif
 !##########################################################
 ! End fields init
 !##########################################################
