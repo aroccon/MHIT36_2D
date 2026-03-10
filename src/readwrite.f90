@@ -21,35 +21,35 @@ character(len=40) :: namefile
 
 if (fieldn .eq. 1) then
 write(namefile,'(a,i8.8,a)') './output/u_',t,'.dat'
-open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='new')
+open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='replace')
 write(55) u
 close(55)
 endif
 
 if (fieldn .eq. 2) then
 write(namefile,'(a,i8.8,a)') './output/v_',t,'.dat'
-open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='new')
+open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='replace')
 write(55) v
 close(55)
 endif
 
 if (fieldn .eq. 3) then
 write(namefile,'(a,i8.8,a)') './output/p_',t,'.dat'
-open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='new')
+open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='replace')
 write(55) p
 close(55)
 endif
 
 if (fieldn .eq. 4) then
 write(namefile,'(a,i8.8,a)') './output/phi_',t,'.dat'
-open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='new')
+open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='replace')
 write(55) phi
 close(55)
 endif
 
 if (fieldn .eq. 5) then
 write(namefile,'(a,i8.8,a)') './output/t_',t,'.dat'
-open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='new')
+open(unit=55,file=namefile,form='unformatted',position='append',access='stream',status='replace')
 write(55) temp
 close(55)
 endif
@@ -131,6 +131,7 @@ character(len=40) :: namefile
 
 ! fieldn=1 means u
 ! fieldn=2 means v
+! fieldn=3 means p
 ! fieldn=4 means phi
 ! fieldn=5 means temp
 
@@ -149,7 +150,6 @@ open(unit=55,file=namefile,form='unformatted',access='stream',status='old',conve
 read(55) v
 close(55)
 endif
-
 
 if (fieldn .eq. 3) then
 write(namefile,'(a,i8.8,a)') './output/p_',t,'.dat'

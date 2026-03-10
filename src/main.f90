@@ -93,36 +93,51 @@ if (status.ne.0) write(*,*) "Error in cuFFT plan BWD:", status
 !##########################################################
 ! Initialize fields
 !##########################################################
-write(*,*) "Initialize velocity, temperature and phase-field"
-! u velocity
-do i=1,nx
-  do j=1,ny
-    u(i,j)= 0.d0! 0.1d0*sin(1.3d0*pi*(x(i)-dx/2))*cos(pi*(y(j)+dy/2))
-  enddo
-enddo
-! v velocity
-do i=1,nx
-  do j=1,ny
-    v(i,j)=-0.d0 !1d0*cos(pi*(x(i)))*sin(pi*(y(j)-dy/2))
-  enddo
-enddo
-! phase-field
-if (icphi .eq. 0) then
+! this is a fresh start, so initialize velocity, temperature and phase-field
+if (restart. eq. 0) then
+  write(*,*) "Initialize velocity, temperature and phase-field"
+  ! u velocity
   do i=1,nx
     do j=1,ny
-      !pos=(x(i)-lx/2)**2d0 + (y(j)-ly/2)**2
-      !pos=(x(i)-lx/2)**2d0 + (y(j)-ly)**2
-      pos= (y(j)-ly/2)**2
-      phi(i,j)=0.5d0*(1.d0-tanh((sqrt(pos)-radius)/(2.d0*eps)))
+      u(i,j)= 0.d0! 0.1d0*sin(1.3d0*pi*(x(i)-dx/2))*cos(pi*(y(j)+dy/2))
     enddo
   enddo
+  ! v velocity
+  do i=1,nx
+    do j=1,ny
+      v(i,j)=-0.d0 !1d0*cos(pi*(x(i)))*sin(pi*(y(j)-dy/2))
+    enddo
+  enddo
+  ! phase-field
+  if (icphi .eq. 0) then
+    do i=1,nx
+      do j=1,ny
+        !pos=(x(i)-lx/2)**2d0 + (y(j)-ly/2)**2
+        !pos=(x(i)-lx/2)**2d0 + (y(j)-ly)**2
+        pos= (y(j)-ly/2)**2
+        phi(i,j)=0.5d0*(1.d0-tanh((sqrt(pos)-radius)/(2.d0*eps)))
+      enddo
+    enddo
+  endif
+  if (icphi .eq. 1) then
+    write(*,*) "Reading phi for IC"
+    open(unit=666,file='phi_initial.dat',form='unformatted',access='stream',status='old',convert='little_endian')
+    read(666) phi
+    close(666)
+  endif
 endif
-if (icphi .eq. 1) then
-  write(*,*) "Reading phi for IC"
-  open(unit=666,file='phi_initial.dat',form='unformatted',access='stream',status='old',convert='little_endian')
-  read(666) phi
-  close(666)
+! this is a restart, so read velocity, temperature and phase-field from file
+if (restart. eq. 1) then
+  call readfield_restart(tstart,1)
+  call readfield_restart(tstart,2)
+  #if phiflag == 1
+  call readfield_restart(tstart,4)
+  #endif
+  #if tempflag == 1
+  call readfield_restart(tstart,5)
+  #endif
 endif
+
 ! impose BC on phase-field ghost nodes
 do i=1,nx
   phi(i,0) = phi(i,1)
