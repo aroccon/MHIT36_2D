@@ -6,8 +6,8 @@ program nusselt_rb
   real(8),  parameter :: kappa = 0.166d0
   real(8),  parameter :: dy = ly / ny
 
-  integer,  parameter :: t_start = 5000000
-  integer,  parameter :: t_end   = 17000000
+  integer,  parameter :: t_start = 2000000
+  integer,  parameter :: t_end   = 10000000
   integer,  parameter :: t_step  = 4000
 
   real(8), allocatable :: t_field(:,:), v_field(:,:), phi_field(:,:)

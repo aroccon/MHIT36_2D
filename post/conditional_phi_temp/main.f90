@@ -2,7 +2,7 @@ program cond_avg_phi_T
   implicit none
 
   integer,  parameter :: nx = 2048, ny = 2048
-  integer,  parameter :: t_start = 4000000
+  integer,  parameter :: t_start = 2000000
   integer,  parameter :: t_end   = 10000000
   integer,  parameter :: t_step  = 4000
 
