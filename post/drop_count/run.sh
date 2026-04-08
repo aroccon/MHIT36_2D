@@ -1,2 +1,2 @@
-gfortran -O3 -o nusselt main.f90
-./nusselt
+gfortran -O3 -o drops main.f90
+./drops

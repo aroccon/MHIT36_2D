@@ -3,8 +3,8 @@ program drop_count
 
   integer, parameter :: nx = 2048, ny = 2048
   integer, parameter :: t_start = 4000000
-  integer, parameter :: t_end   = 10000000
-  integer, parameter :: t_step  = 4000
+  integer, parameter :: t_end   = 17000000
+  integer, parameter :: t_step  = 100000
 
   ! 8-connected neighbour offsets (dx, dy)
   integer, parameter :: n_nb = 8
@@ -150,14 +150,13 @@ program drop_count
     ! --- Write output
     write(fname_out, '("drops_", I8.8, ".dat")') snap
     open(unit=20, file=trim(fname_out), status='replace')
-    write(20,'(A)') '# drop_id  area(cells)  x_min  x_max  y_min  y_max  T_mean  wraps_x'
+    write(20,'(A)') '% drop_id  area(cells)  x_min  x_max  y_min  y_max  T_mean  wraps_x'
     do d = 1, n_drops
-      write(20,'(I6, 2X, I8, 4(2X,I6), 2X, ES15.7, 2X, L1)') d, &
+      write(20,'(I6, 2X, I8, 4(2X,I6), 2X, ES15.7, 2X)') d, &
         drop_area(d),                          &
         drop_xmin(d), drop_xmax(d),            &
         drop_ymin(d), drop_ymax(d),            &
-        drop_tsum(d) / dble(drop_area(d)),     &
-        drop_wraps(d)
+        drop_tsum(d) / dble(drop_area(d))     
     end do
     close(20)
 
