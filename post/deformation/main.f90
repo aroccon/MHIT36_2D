@@ -3,7 +3,7 @@ program drop_count
 
   integer, parameter :: nx = 2048, ny = 2048
   integer, parameter :: t_start = 4000000
-  integer, parameter :: t_end   = 10000000
+  integer, parameter :: t_end   = 8000000
   integer, parameter :: t_step  = 4000
 
   real(8), parameter :: cell_area = 1.d0
