@@ -31,7 +31,6 @@ program drop_count
   integer, allocatable :: drop_ymin(:), drop_ymax(:)
   integer, allocatable :: drop_uxmin(:), drop_uxmax(:)
   real(8), allocatable :: drop_tsum(:)
-  real(8), allocatable :: drop_gradT_sum(:)
   logical, allocatable :: drop_wraps(:)
   real(8), allocatable :: drop_xsum(:), drop_ysum(:)
   real(8), allocatable :: drop_Ixx(:), drop_Iyy(:), drop_Ixy(:)
@@ -40,10 +39,8 @@ program drop_count
   integer :: i, j, snap, n_drops, d
   integer :: ci, cj, ni, nj
   integer :: cux, nux
-  integer :: im1, ip1
   real(8) :: xc, yc, Ixx, Iyy, Ixy
   real(8) :: trace, det, disc, lambda1, lambda2, deformation
-  real(8) :: dTdx, dTdy, gradT_mag
   character(len=64) :: fname_phi, fname_t, fname_out
 
   allocate( phi_field(nx, 0:ny+1) )
@@ -55,7 +52,6 @@ program drop_count
   allocate( drop_ymin(max_drops), drop_ymax(max_drops) )
   allocate( drop_uxmin(max_drops), drop_uxmax(max_drops) )
   allocate( drop_tsum(max_drops) )
-  allocate( drop_gradT_sum(max_drops) )
   allocate( drop_wraps(max_drops) )
   allocate( drop_xsum(max_drops), drop_ysum(max_drops) )
   allocate( drop_Ixx(max_drops), drop_Iyy(max_drops), drop_Ixy(max_drops) )
@@ -75,12 +71,6 @@ program drop_count
          form='unformatted', access='stream', status='old')
     read(11) t_field
     close(11)
-
-    ! --- Ghost cells for T (isothermal walls)
-    do i = 1, nx
-      t_field(i, 0)    =  0.5d0
-      t_field(i, ny+1) = -0.5d0
-    end do
 
     ! --- Build binary mask
     do j = 1, ny
@@ -105,21 +95,20 @@ program drop_count
           end if
 
           ! initialise drop properties
-          drop_area(n_drops)     = 0
-          drop_tsum(n_drops)     = 0.d0
-          drop_gradT_sum(n_drops)= 0.d0
-          drop_xmin(n_drops)     = i
-          drop_xmax(n_drops)     = i
-          drop_ymin(n_drops)     = j
-          drop_ymax(n_drops)     = j
-          drop_uxmin(n_drops)    = i
-          drop_uxmax(n_drops)    = i
-          drop_wraps(n_drops)    = .false.
-          drop_xsum(n_drops)     = 0.d0
-          drop_ysum(n_drops)     = 0.d0
-          drop_Ixx(n_drops)      = 0.d0
-          drop_Iyy(n_drops)      = 0.d0
-          drop_Ixy(n_drops)      = 0.d0
+          drop_area(n_drops)  = 0
+          drop_tsum(n_drops)  = 0.d0
+          drop_xmin(n_drops)  = i
+          drop_xmax(n_drops)  = i
+          drop_ymin(n_drops)  = j
+          drop_ymax(n_drops)  = j
+          drop_uxmin(n_drops) = i
+          drop_uxmax(n_drops) = i
+          drop_wraps(n_drops) = .false.
+          drop_xsum(n_drops)  = 0.d0
+          drop_ysum(n_drops)  = 0.d0
+          drop_Ixx(n_drops)   = 0.d0
+          drop_Iyy(n_drops)   = 0.d0
+          drop_Ixy(n_drops)   = 0.d0
 
           ! push seed
           stack_top    = 1
@@ -138,14 +127,6 @@ program drop_count
 
             drop_area(n_drops) = drop_area(n_drops) + 1
             drop_tsum(n_drops) = drop_tsum(n_drops) + t_field(ci,cj)
-
-            ! --- Temperature gradient at this cell
-            im1 = mod(ci-2+nx, nx) + 1
-            ip1 = mod(ci,      nx) + 1
-            dTdx = (t_field(ip1,cj) - t_field(im1,cj)) / (2.d0*ddx)
-            dTdy = (t_field(ci,cj+1) - t_field(ci,cj-1)) / (2.d0*ddy)
-            gradT_mag = dsqrt(dTdx**2 + dTdy**2)
-            drop_gradT_sum(n_drops) = drop_gradT_sum(n_drops) + gradT_mag
 
             ! accumulate position sums for centroid (unwrapped x)
             drop_xsum(n_drops) = drop_xsum(n_drops) + dble(cux)
@@ -231,14 +212,13 @@ program drop_count
     write(fname_out, '("drops_", I8.8, ".dat")') snap
     open(unit=20, file=trim(fname_out), status='replace')
     write(20,'(A)') '% drop_id  area  x_min  x_max  y_min  y_max  ' // &
-                    'T_mean  gradT_mean  lambda1  lambda2  deformation'
+                    'T_mean  lambda1  lambda2  deformation'
     do d = 1, n_drops
-      write(20,'(I6, 2X, I8, 4(2X,I6), 5(2X,ES15.7))') d,            &
+      write(20,'(I6, 2X, I8, 4(2X,I6), 4(2X,ES15.7))') d,            &
         drop_area(d),                                                   &
         drop_xmin(d), drop_xmax(d),                                    &
         drop_ymin(d), drop_ymax(d),                                    &
-        drop_tsum(d)      / dble(drop_area(d)),                        &   ! T_mean
-        drop_gradT_sum(d) / dble(drop_area(d)),                        &   ! gradT_mean
+        drop_tsum(d) / dble(drop_area(d)),                             &   ! T_mean
         drop_Ixx(d),                                                   &   ! lambda1
         drop_Iyy(d),                                                   &   ! lambda2
         drop_Ixy(d)                                                        ! deformation
@@ -253,7 +233,7 @@ program drop_count
   deallocate(stack_x, stack_y, stack_ux)
   deallocate(drop_area, drop_xmin, drop_xmax, drop_ymin, drop_ymax)
   deallocate(drop_uxmin, drop_uxmax)
-  deallocate(drop_tsum, drop_gradT_sum, drop_wraps)
+  deallocate(drop_tsum, drop_wraps)
   deallocate(drop_xsum, drop_ysum)
   deallocate(drop_Ixx, drop_Iyy, drop_Ixy)
 
