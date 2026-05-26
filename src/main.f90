@@ -112,9 +112,8 @@ if (restart .eq. 0) then
   if (icphi .eq. 0) then
     do i=1,nx
       do j=1,ny
-        !pos=(x(i)-lx/2)**2d0 + (y(j)-ly/2)**2
-        !pos=(x(i)-lx/2)**2d0 + (y(j)-ly)**2
-        pos= (y(j)-ly/2)**2
+        pos=(x(i)-lx/2)**2d0 + (y(j)-ly)**2
+        !pos= (y(j)-ly/2)**2
         phi(i,j)=0.5d0*(1.d0-tanh((sqrt(pos)-radius)/(2.d0*eps)))
       enddo
     enddo
@@ -201,6 +200,12 @@ do t=tstart,tfin
       enddo
     enddo
 
+    ! ghost psidi for the normy stencil at j=1 and j=ny
+    do i=1,nx
+      psidi(i,0)    = psidi(i,1)
+      psidi(i,ny+1) = psidi(i,ny)
+    enddo
+
     do j=1,ny
       do i=1,nx
         ip=i+1; im=i-1; jp=j+1; jm=j-1
@@ -208,16 +213,16 @@ do t=tstart,tfin
         if (im < 1)  im=nx
         normx(i,j) = 0.5d0*(psidi(ip,j)-psidi(im,j))*dxi
         normy(i,j) = 0.5d0*(psidi(i,jp)-psidi(i,jm))*dyi
-        if (j == 1 .or. j == ny) normy(i,j) = 0.d0
         normod = 1.0d0/(sqrt(normx(i,j)**2 + normy(i,j)**2) + enum)
         normx(i,j) = normx(i,j)*normod
         normy(i,j) = normy(i,j)*normod
       enddo
     enddo
 
+    ! anti-symmetric ghost: wall-face flux is zero, but normy(1) stays physical
     do i=1,nx
-      normy(i,0) = normy(i,1)
-      normy(i,ny+1) = normy(i,ny)
+      normy(i,0)    = -normy(i,1)
+      normy(i,ny+1) = -normy(i,ny)
     enddo
 
     ! --- 2. Compute RHS --- is already in skew-symmetric form?
@@ -247,8 +252,6 @@ do t=tstart,tfin
         fxm = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(im,j)+psidi(i,j))*epsi)**2)*0.5d0*(normx(im,j)+normx(i,j))
         fyp = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(i,j)+psidi(i,jp))*epsi)**2)*0.5d0*(normy(i,j)+normy(i,jp))
         fym = gamma*0.25d0*(1.d0-tanh(0.25d0*(psidi(i,jm)+psidi(i,j))*epsi)**2)*0.5d0*(normy(i,jm)+normy(i,j))
-        if (j == 1)  fym = 0.d0
-        if (j == ny) fyp = 0.d0
         rhsphi(i,j) = rhsphi(i,j) - (fxp - fxm)*dxi  - (fyp - fym)*dyi
       enddo
     enddo
