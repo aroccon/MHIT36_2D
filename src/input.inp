@@ -1,15 +1,21 @@
 0           ! fresh start=0 restart =1
 0           ! iteration to start from (fresh start 0 otherwise different)
-4000000      ! Final time step
-8000        ! Saving frequency
-0.125         ! dt for the simulation
-1.36        ! density
-0.1666      ! viscosity
-2.5e-3       ! alphag
+10000       ! Final time step
+1000        ! Saving frequency
+0.001       ! dt for the simulation
+1.000       ! density
+0.0001      ! viscosity
+0.000       ! alphag
 1.000       ! pr
-4096        ! lx
-1024        ! ly
-0           ! Initial condition phase-field (one drop or read from file)
-64         ! Initial drop radius for phase-field
+6.28        ! lx
+2.00        ! ly
+2           ! Initial condition phase-field (0=one drop, 1=read from file, 2=two drops)
+0.4          ! Initial drop radius for phase-field
 0.0325      ! Surface tension
 1.0         ! Ratio eps/dx
+0.5         ! xoffset: drops at lx/2 -/+ xoffset (icphi=2)
+0.2         ! yoffset: drops at ly/2 +/- yoffset (icphi=2)
+0.0         ! Hamaker constant A_H for near-contact repulsive force (0 = off)
+8.0         ! hc: look-ahead distance (in units of dx), must be > ~5.3*eps/dx
+2.5         ! hmin: minimum gap distance (in units of dx)
+10.0        ! hmax: gap used when no other interface is detected (in units of dx)

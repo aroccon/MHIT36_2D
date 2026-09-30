@@ -1,5 +1,5 @@
 module param
-  integer, parameter :: nx=2048, ny=512
+  integer, parameter :: nx=512, ny=200
   double precision, parameter :: pi=3.141592653589793d0
   double precision :: dx, dy, lx, ly, acoeff, q, l2norm, err, dyi, factor, twopi
   double precision :: radius, eps, epsi, gamma, rho, mu, dxi, ddxi, ddyi, normod, dt
@@ -7,7 +7,8 @@ module param
   double precision :: chempot, curv, sigma, cflx, cfly, ra, pr, nut, nub, num, noise, enum
   double precision :: pos, epsr, times, timef, difftemp, h11, h12, h21, h22, rhoi, alphag
   double precision :: ttop, tbot
-  double precision :: mass, maxphi
+  double precision :: mass, maxphi, xoffset, yoffset
+  double precision :: ahamaker, hcr, hminr, hmaxr, hc, hmin, hmax ! near-contact repulsive force
   integer :: tstart, tfin, restart, dump, icphi
 end module param
 
@@ -19,6 +20,7 @@ end module velocity
 
 module phase
     double precision, allocatable :: rhsphi(:,:), phi(:,:), q_phi(:,:), psidi(:,:), normx(:,:), normy(:,:), fxst(:,:), fyst(:,:)
+    double precision, allocatable :: fxrep(:,:), fyrep(:,:) ! near-contact repulsive force (separate from surface tension)
 end module phase
 
 module temperature

@@ -23,7 +23,14 @@ read(55,*) ly
 read(55,*) icphi
 read(55,*) radius
 read(55,*) sigma
-read(55,*) epsr   
+read(55,*) epsr
+read(55,*) xoffset
+read(55,*) yoffset
+! near-contact repulsive force (Liu et al., PoF 37, 092123, 2025)
+read(55,*) ahamaker
+read(55,*) hcr
+read(55,*) hminr
+read(55,*) hmaxr
 
 
 
@@ -41,6 +48,9 @@ ddyi=1.d0/dy/dy
 rhoi=1.d0/rho
 eps=epsr*min(dx,dy)
 epsi=1.d0/eps
+hc=hcr*min(dx,dy)
+hmin=hminr*min(dx,dy)
+hmax=hmaxr*min(dx,dy)
 enum=1.e-16
 tbot=0.5d0
 ttop=-0.5d0
@@ -62,8 +72,11 @@ write(*,*) "Alphag        ", alphag
 write(*,*) "Prandtl        ", pr
 write(*,*) "Difftemp (from Pr)", difftemp
 write(*,*) "Radius          ", radius
+if (icphi .eq. 2) write(*,*) "Drop offsets x,y", xoffset, yoffset
 write(*,*) "Sigma          ", sigma
 write(*,*) "Eps             ", eps
+write(*,*) "Hamaker A_H     ", ahamaker
+write(*,*) "hc, hmin, hmax  ", hc, hmin, hmax
 write(*,*) 'Lx             ', lx
 write(*,*) 'Ly             ', ly
 write(*,*) 'Dx              ', dx

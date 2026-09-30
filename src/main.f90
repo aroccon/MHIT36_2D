@@ -19,6 +19,8 @@ double complex,   allocatable :: d(:,:), sol(:,:) !TDMA pressure (complex variab
 double precision, allocatable :: af(:,:), bf(:,:), cf(:,:), df(:,:), solf(:,:) !TDMA temperature
 integer :: planf, planb, status, stage
 double precision :: fxp, fxm, fyp, fym
+double precision :: psia, nxa, nya, xc, yc, fi, fj, wx, wy, phic, hgap, prep ! near-contact repulsive force
+integer :: i0, i1, j0, j1
 ! RK3 Coefficeients: Spalart-Allmara 3-stage LSRK3
 double precision, parameter ::  alpha(3)     = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /) 
 double precision, parameter ::  beta(3)      = (/ 0.d0,       -17.d0/60.d0,  -5.d0/12.d0/) 
@@ -27,7 +29,7 @@ double precision, parameter ::  rk4a(5)     = (/ 0.d0,       -567301805773.d0/13
 double precision, parameter ::  rk4b(5)     = (/ 1432997174477.d0/9575080441755.d0, 5161836677717.d0/13612068292357.d0, 1720146321549.d0/2090206949498.d0, 3134564353537.d0/4481467310338.d0, 2277821191437.d0/14882151754819.d0 /)
 
 #define phiflag 1
-#define tempflag 1
+#define tempflag 0
 
 call readinput
 
@@ -56,6 +58,7 @@ allocate(a(nx/2+1,0:ny+1),b(nx/2+1,0:ny+1),c(nx/2+1,0:ny+1),d(nx/2+1,0:ny+1),sol
 allocate(phi(nx,0:ny+1),rhsphi(nx,0:ny+1),psidi(nx,0:ny+1),q_phi(nx,0:ny+1))
 allocate(normx(nx,0:ny+1),normy(nx,0:ny+1))
 allocate(fxst(nx,ny),fyst(nx,ny))
+allocate(fxrep(nx,ny),fyrep(nx,ny))
 
 ! temperature variables (defined on centers)
 allocate(temp(nx,0:ny+1),rhstemp(nx,0:ny+1),rhstemp_o(nx,0:ny+1))
@@ -99,7 +102,7 @@ if (restart .eq. 0) then
   ! u velocity
   do i=1,nx
     do j=1,ny
-      u(i,j)= 0.d0! 0.1d0*sin(1.3d0*pi*(x(i)-dx/2))*cos(pi*(y(j)+dy/2))
+      u(i,j)= 2.d0*y(j)/ly - 1.d0 ! linear shear profile, -1 at bottom wall, +1 at top wall ! 0.1d0*sin(1.3d0*pi*(x(i)-dx/2))*cos(pi*(y(j)+dy/2))
     enddo
   enddo
   ! v velocity
@@ -115,6 +118,18 @@ if (restart .eq. 0) then
         pos=(x(i)-lx/2)**2d0 + (y(j)-ly)**2
         !pos= (y(j)-ly/2)**2
         phi(i,j)=0.5d0*(1.d0-tanh((sqrt(pos)-radius)/(2.d0*eps)))
+      enddo
+    enddo
+  endif
+  if (icphi .eq. 2) then
+    ! two drops: upper-left at (lx/2-xoffset, ly/2+yoffset), lower-right at (lx/2+xoffset, ly/2-yoffset)
+    ! with top wall +1 and bottom wall -1 the shear brings them towards each other
+    do i=1,nx
+      do j=1,ny
+        pos=(x(i)-(lx/2-xoffset))**2 + (y(j)-(ly/2+yoffset))**2
+        phi(i,j)=0.5d0*(1.d0-tanh((sqrt(pos)-radius)/(2.d0*eps)))
+        pos=(x(i)-(lx/2+xoffset))**2 + (y(j)-(ly/2-yoffset))**2
+        phi(i,j)=max(phi(i,j), 0.5d0*(1.d0-tanh((sqrt(pos)-radius)/(2.d0*eps))))
       enddo
     enddo
   endif
@@ -177,7 +192,7 @@ endif
 ! Start temporal loop
 !##########################################################
 tstart=tstart+1
-!$acc data copyin(u,v,phi,temp) create(p,rhsu,rhsv,rhsphi,rhstemp,psidi,normx,normy,fxst,fyst,a,b,c,d,sol)
+!$acc data copyin(u,v,phi,temp) create(p,rhsu,rhsv,rhsphi,rhstemp,psidi,normx,normy,fxst,fyst,fxrep,fyrep,a,b,c,d,sol)
 write(*,*) "Start temporal loop"
 do t=tstart,tfin
   call cpu_time(times)
@@ -350,6 +365,65 @@ do t=tstart,tfin
 
 
   !##########################################################
+  ! Near-contact repulsive force (Liu et al., PoF 37, 092123, 2025)
+  ! Kept separate from surface tension; phi is fixed during the NS stages, so compute once per step
+  ! F_r = A_H/(6*pi*h^3) * grad(phi), with h the gap to the closest other interface along the outward normal
+  !##########################################################
+  #if phiflag == 1
+  !$acc parallel loop collapse(2) private(ip,im,jp,jm,psia,nxa,nya,xc,yc,fi,fj,i0,i1,j0,j1,wx,wy,phic,hgap,prep)
+  do j=1,ny
+    do i=1,nx
+      fxrep(i,j)=0.d0
+      fyrep(i,j)=0.d0
+      if (ahamaker .gt. 0.d0 .and. phi(i,j) .ge. 0.005d0 .and. phi(i,j) .le. 0.995d0) then
+        ip=i+1
+        im=i-1
+        jp=j+1
+        jm=j-1
+        if (ip .gt. nx) ip=1
+        if (im .lt. 1) im=nx
+        ! signed distance to own interface (>0 inside) and outward normal
+        psia=eps*log(phi(i,j)/(1.d0-phi(i,j)))
+        nxa=-normx(i,j)
+        nya=-normy(i,j)
+        ! x_C = x_B + hc*n, with x_B = x_A + psia*n the projection on own interface (Eqs. 20, 23)
+        xc=(i-0.5d0)*dx + (psia+hc)*nxa
+        yc=(j-0.5d0)*dy + (psia+hc)*nya
+        if (yc .lt. 0.d0 .or. yc .gt. ly) then
+          ! look-ahead point beyond the walls: no other interface
+          hgap=hmax
+        else
+          ! bilinear interpolation of phi at x_C (periodic in x, ghost nodes in y)
+          fi=xc*dxi + 0.5d0
+          fj=yc*dyi + 0.5d0
+          i0=floor(fi)
+          j0=floor(fj)
+          wx=fi-i0
+          wy=fj-j0
+          i1=modulo(i0,nx)+1
+          i0=modulo(i0-1,nx)+1
+          j1=j0+1
+          phic=(1.d0-wx)*(1.d0-wy)*phi(i0,j0) + wx*(1.d0-wy)*phi(i1,j0) &
+              +(1.d0-wx)*wy*phi(i0,j1)        + wx*wy*phi(i1,j1)
+          ! gap distance (Eq. 22): hc minus the signed distance of x_C inside the other interface
+          if (phic .lt. 0.005d0) then
+            hgap=hmax
+          elseif (phic .gt. 0.995d0) then
+            hgap=hmin
+          else
+            hgap=hc - eps*log(phic/(1.d0-phic))
+            hgap=min(max(hgap,hmin),hmax)
+          endif
+        endif
+        prep=ahamaker/(6.d0*pi*hgap**3)
+        fxrep(i,j)=prep*0.5d0*(phi(ip,j)-phi(im,j))*dxi
+        fyrep(i,j)=prep*0.5d0*(phi(i,jp)-phi(i,jm))*dyi
+      endif
+    enddo
+  enddo
+  #endif
+
+  !##########################################################
   ! START 3A: Projection step for NS
   !##########################################################
   ! Advection + diffusion
@@ -418,6 +492,19 @@ do t=tstart,tfin
       enddo
     enddo
     !$acc end kernels
+
+    !$acc kernels
+    ! Add near-contact repulsive forces to RHS (computed before the stage loop)
+    do j=1,ny
+      do i=1,nx
+        im=i-1
+        jm=j-1
+        if (im .lt. 1) im=nx
+        rhsu(i,j)=rhsu(i,j) + 0.5d0*(fxrep(im,j)+fxrep(i,j))*rhoi
+        rhsv(i,j)=rhsv(i,j) + 0.5d0*(fyrep(i,jm)+fyrep(i,j))*rhoi
+      enddo
+    enddo
+    !$acc end kernels
     #endif
 
     ! find u, v and w star (AB2), overwrite u,v and w
@@ -435,8 +522,8 @@ do t=tstart,tfin
     !impose BCs on the flow field
     !$acc kernels
     do i=1,nx
-      u(i,0)=    -u(i,1)
-      u(i,ny+1)= -u(i,ny)
+      u(i,0)=   -2.0d0-u(i,1)   ! bottom wall moves with u=-1
+      u(i,ny+1)= 2.0d0-u(i,ny)  ! top wall moves with u=+1
       v(i,1)=0.0d0
       v(i,ny+1)=0.0d0
     enddo
@@ -558,8 +645,8 @@ do t=tstart,tfin
   vmax=0.d0
   !$acc parallel loop collapse(1) reduction(max:umax,vmax)
   do i=1,nx
-    u(i,0)=    -u(i,1)
-    u(i,ny+1)= -u(i,ny)
+    u(i,0)=   -2.0d0-u(i,1)   ! bottom wall moves with u=-1
+    u(i,ny+1)= 2.0d0-u(i,ny)  ! top wall moves with u=+1
     v(i,1)=0.0d0
     v(i,ny+1)=0.0d0
     do j=2,ny
@@ -617,7 +704,7 @@ enddo
 deallocate(x,y)
 !deallocate(a,b,c,d,sol)
 deallocate(kx,kx2)
-deallocate(fxst,fyst,rhsu,rhsv,rhsu_o,rhsv_o)
+deallocate(fxst,fyst,fxrep,fyrep,rhsu,rhsv,rhsu_o,rhsv_o)
 deallocate(rhsp,p,rhspc)
 
 end program main
