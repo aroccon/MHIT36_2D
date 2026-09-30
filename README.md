@@ -63,7 +63,7 @@ If you use this code, please cite the following works:
 - RB setup ✅ 
 - GPU offloading of entire code  ✅
 - TDMA optimization (x 10 speed-up)  ✅
-- Repulvise force to prevent coalescence (work in progress 🚧)
+- Repulsive force to prevent coalescence (work in progress 🚧)
 
 
 ## Validation  
