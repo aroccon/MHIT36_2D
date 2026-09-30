@@ -3,12 +3,12 @@ FC = nvfortran
 
 # Compiler flags
 #FFLAGS = -fast -gpu=managed  -acc -Mfree -cuda -Mpreprocess -mcmodel=medium
-FFLAGS = -fast -gpu=managed -acc -Mfree -Mpreprocess -mcmodel=medium
+FFLAGS = -fast -gpu=mem:managed -acc -Mfree -Mpreprocess -mcmodel=medium
 LIBS    = -L/usr/local/cuda/lib64 -cudalib=cufft   -lcufft -lnvToolsExt
 
 # Source files
-SRCS = module.f90 main.f90 readwrite.f90
-EXEC = nemesi36
+SRCS = module.f90 main.f90 readinput.f90 readwrite.f90
+EXEC = mhit36
 
 # Object files
 OBJS = $(SRCS:.f90=.o)
