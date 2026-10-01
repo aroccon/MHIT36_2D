@@ -13,7 +13,7 @@
 -1.0        ! ubot: bottom wall velocity (0 = no-slip fixed wall)
 2           ! Initial condition phase-field (0=one drop, 1=read from file, 2=two drops)
 0.35        ! Initial drop radius for phase-field
-1.00        ! Surface tension
+0.35        ! Surface tension
 1.0         ! Ratio eps/dx
 0.5         ! xoffset: drops at lx/2 -/+ xoffset (icphi=2)
 0.25        ! yoffset: drops at ly/2 +/- yoffset (icphi=2)
