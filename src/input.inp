@@ -9,6 +9,8 @@
 1.000       ! pr
 6.28        ! lx
 2.00        ! ly
+1.0         ! utop: top wall velocity (0 = no-slip fixed wall)
+-1.0        ! ubot: bottom wall velocity (0 = no-slip fixed wall)
 2           ! Initial condition phase-field (0=one drop, 1=read from file, 2=two drops)
 0.4          ! Initial drop radius for phase-field
 0.0325      ! Surface tension

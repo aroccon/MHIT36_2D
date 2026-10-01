@@ -19,6 +19,8 @@ read(55,*) alphag
 read(55,*) pr
 read(55,*) lx
 read(55,*) ly
+read(55,*) utop
+read(55,*) ubot
 ! phase-field parameters
 read(55,*) icphi
 read(55,*) radius
@@ -79,6 +81,8 @@ write(*,*) "Hamaker A_H     ", ahamaker
 write(*,*) "hc, hmin, hmax  ", hc, hmin, hmax
 write(*,*) 'Lx             ', lx
 write(*,*) 'Ly             ', ly
+write(*,*) 'U top wall     ', utop
+write(*,*) 'U bottom wall  ', ubot
 write(*,*) 'Dx              ', dx
 write(*,*) 'Dy              ', dy
 end subroutine

@@ -7,6 +7,7 @@ module param
   double precision :: chempot, curv, sigma, cflx, cfly, ra, pr, nut, nub, num, noise, enum
   double precision :: pos, epsr, times, timef, difftemp, h11, h12, h21, h22, rhoi, alphag
   double precision :: ttop, tbot
+  double precision :: utop, ubot ! wall velocities (x-direction)
   double precision :: mass, maxphi, xoffset, yoffset
   double precision :: ahamaker, hcr, hminr, hmaxr, hc, hmin, hmax ! near-contact repulsive force
   integer :: tstart, tfin, restart, dump, icphi

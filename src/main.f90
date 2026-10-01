@@ -102,7 +102,7 @@ if (restart .eq. 0) then
   ! u velocity
   do i=1,nx
     do j=1,ny
-      u(i,j)= 2.d0*y(j)/ly - 1.d0 ! linear shear profile, -1 at bottom wall, +1 at top wall ! 0.1d0*sin(1.3d0*pi*(x(i)-dx/2))*cos(pi*(y(j)+dy/2))
+      u(i,j)= ubot + (utop-ubot)*y(j)/ly ! linear profile between bottom (ubot) and top (utop) wall velocities ! 0.1d0*sin(1.3d0*pi*(x(i)-dx/2))*cos(pi*(y(j)+dy/2))
     enddo
   enddo
   ! v velocity
@@ -522,8 +522,8 @@ do t=tstart,tfin
     !impose BCs on the flow field
     !$acc kernels
     do i=1,nx
-      u(i,0)=   -2.0d0-u(i,1)   ! bottom wall moves with u=-1
-      u(i,ny+1)= 2.0d0-u(i,ny)  ! top wall moves with u=+1
+      u(i,0)=    2.0d0*ubot-u(i,1)  ! bottom wall velocity ubot
+      u(i,ny+1)= 2.0d0*utop-u(i,ny) ! top wall velocity utop
       v(i,1)=0.0d0
       v(i,ny+1)=0.0d0
     enddo
@@ -645,8 +645,8 @@ do t=tstart,tfin
   vmax=0.d0
   !$acc parallel loop collapse(1) reduction(max:umax,vmax)
   do i=1,nx
-    u(i,0)=   -2.0d0-u(i,1)   ! bottom wall moves with u=-1
-    u(i,ny+1)= 2.0d0-u(i,ny)  ! top wall moves with u=+1
+    u(i,0)=    2.0d0*ubot-u(i,1)  ! bottom wall velocity ubot
+    u(i,ny+1)= 2.0d0*utop-u(i,ny) ! top wall velocity utop
     v(i,1)=0.0d0
     v(i,ny+1)=0.0d0
     do j=2,ny
