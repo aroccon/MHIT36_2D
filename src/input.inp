@@ -1,6 +1,6 @@
 0           ! fresh start=0 restart =1
 0           ! iteration to start from (fresh start 0 otherwise different)
-3000000     ! Final time step
+300000     ! Final time step
 10000       ! Saving frequency
 0.00001     ! dt for the simulation
 0.0500      ! density
@@ -17,7 +17,7 @@
 1.0         ! Ratio eps/dx
 0.5         ! xoffset: drops at lx/2 -/+ xoffset (icphi=2)
 0.25        ! yoffset: drops at ly/2 +/- yoffset (icphi=2)
-0.0         ! Hamaker constant A_H for near-contact repulsive force (0 = off)
+0.01        ! Hamaker constant A_H for near-contact repulsive force (0 = off)
 8.0         ! hc: look-ahead distance (in units of max(dx,dy)), must be > ~5.3*epsr
-2.5         ! hmin: minimum gap distance (in units of max(dx,dy))
-10.0        ! hmax: gap used when no other interface is detected (in units of max(dx,dy))
+5.0         ! hmin: minimum gap distance (in units of max(dx,dy))
+13.0        ! hmax: gap used when no other interface is detected (in units of max(dx,dy))

@@ -375,7 +375,7 @@ do t=tstart,tfin
     do i=1,nx
       fxrep(i,j)=0.d0
       fyrep(i,j)=0.d0
-      if (ahamaker .gt. 0.d0 .and. phi(i,j) .ge. 0.005d0 .and. phi(i,j) .le. 0.995d0) then
+      if (ahamaker .gt. 0.d0 .and. phi(i,j) .ge. 0.01d0 .and. phi(i,j) .le. 0.99d0) then
         ip=i+1
         im=i-1
         jp=j+1
@@ -383,7 +383,7 @@ do t=tstart,tfin
         if (ip .gt. nx) ip=1
         if (im .lt. 1) im=nx
         ! signed distance to own interface (>0 inside) and outward normal
-        psia=eps*log(phi(i,j)/(1.d0-phi(i,j)))
+        psia=eps*log(phi(i,j)/(1.d0-phi(i,j))) ! no need to avoid singularity here because phi is already bounded by 0.01 and 0.99
         nxa=-normx(i,j)
         nya=-normy(i,j)
         ! x_C = x_B + hc*n, with x_B = x_A + psia*n the projection on own interface (Eqs. 20, 23)
@@ -697,9 +697,9 @@ do t=tstart,tfin
 enddo
 !$acc end data
 
-!open(unit=55,file='output/out.dat',form='unformatted',position='append',access='stream',status='new')
-!write(55) normx
-!close(55)
+open(unit=55,file='output/out.dat',form='unformatted',position='append',access='stream',status='new')
+write(55) fxrep
+close(55)
 
 deallocate(x,y)
 !deallocate(a,b,c,d,sol)
