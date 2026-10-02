@@ -9,7 +9,7 @@ module param
   double precision :: ttop, tbot
   double precision :: utop, ubot ! wall velocities (x-direction)
   double precision :: mass, maxphi, xoffset, yoffset
-  double precision :: ahamaker, hcr, hminr, hmaxr, hc, hmin, hmax ! near-contact repulsive force
+  double precision :: ahamaker, hcr, hminr, hmaxir, hc, hmin, hmini, hmaxi, psilim ! near-contact repulsive force (hmini=1/hmin, hmaxi=1/hmax)
   integer :: tstart, tfin, restart, dump, icphi
 end module param
 

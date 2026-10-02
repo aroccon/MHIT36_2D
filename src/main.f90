@@ -19,7 +19,7 @@ double complex,   allocatable :: d(:,:), sol(:,:) !TDMA pressure (complex variab
 double precision, allocatable :: af(:,:), bf(:,:), cf(:,:), df(:,:), solf(:,:) !TDMA temperature
 integer :: planf, planb, status, stage
 double precision :: fxp, fxm, fyp, fym
-double precision :: psia, nxa, nya, xc, yc, fi, fj, wx, wy, phic, hgap, prep ! near-contact repulsive force
+double precision :: psia, nxa, nya, xc, yc, fi, fj, wx, wy, phic, psic, hi, prep ! near-contact repulsive force
 integer :: i0, i1, j0, j1
 ! RK3 Coefficeients: Spalart-Allmara 3-stage LSRK3
 double precision, parameter ::  alpha(3)     = (/ 8.d0/15.d0,   5.d0/12.d0,   3.d0/4.d0 /) 
@@ -370,7 +370,7 @@ do t=tstart,tfin
   ! F_r = A_H/(6*pi*h^3) * grad(phi), with h the gap to the closest other interface along the outward normal
   !##########################################################
   #if phiflag == 1
-  !$acc parallel loop collapse(2) private(ip,im,jp,jm,psia,nxa,nya,xc,yc,fi,fj,i0,i1,j0,j1,wx,wy,phic,hgap,prep)
+  !$acc parallel loop collapse(2) private(ip,im,jp,jm,psia,nxa,nya,xc,yc,fi,fj,i0,i1,j0,j1,wx,wy,phic,psic,hi,prep)
   do j=1,ny
     do i=1,nx
       fxrep(i,j)=0.d0
@@ -391,9 +391,10 @@ do t=tstart,tfin
         yc=(j-0.5d0)*dy + (psia+hc)*nya
         if (yc .lt. 0.d0 .or. yc .gt. ly) then
           ! look-ahead point beyond the walls: no other interface
-          hgap=hmax
+          hi=hmaxi
         else
-          ! bilinear interpolation of phi at x_C (periodic in x, ghost nodes in y)
+          ! bilinear interpolation of psi=eps*log(phi/(1-phi)) at x_C (periodic in x, ghost nodes in y)
+          ! psi is linear across an interface, so this is much more accurate than interpolating phi
           fi=xc*dxi + 0.5d0
           fj=yc*dyi + 0.5d0
           i0=floor(fi)
@@ -403,19 +404,26 @@ do t=tstart,tfin
           i1=modulo(i0,nx)+1
           i0=modulo(i0-1,nx)+1
           j1=j0+1
-          phic=(1.d0-wx)*(1.d0-wy)*phi(i0,j0) + wx*(1.d0-wy)*phi(i1,j0) &
-              +(1.d0-wx)*wy*phi(i0,j1)        + wx*wy*phi(i1,j1)
+          phic=max(1.d-10, min(phi(i0,j0), 1.d0-1.d-10))
+          psic=(1.d0-wx)*(1.d0-wy)*eps*log(phic/(1.d0-phic))
+          phic=max(1.d-10, min(phi(i1,j0), 1.d0-1.d-10))
+          psic=psic + wx*(1.d0-wy)*eps*log(phic/(1.d0-phic))
+          phic=max(1.d-10, min(phi(i0,j1), 1.d0-1.d-10))
+          psic=psic + (1.d0-wx)*wy*eps*log(phic/(1.d0-phic))
+          phic=max(1.d-10, min(phi(i1,j1), 1.d0-1.d-10))
+          psic=psic + wx*wy*eps*log(phic/(1.d0-phic))
           ! gap distance (Eq. 22): hc minus the signed distance of x_C inside the other interface
-          if (phic .lt. 0.005d0) then
-            hgap=hmax
-          elseif (phic .gt. 0.995d0) then
-            hgap=hmin
+          ! same 0.01/0.99 thresholds as the force band, i.e. |psi| = eps*log(99)
+          if (psic .lt. -psilim) then
+            hi=hmaxi
+          elseif (psic .gt. psilim) then
+            hi=hmini
           else
-            hgap=hc - eps*log(phic/(1.d0-phic))
-            hgap=min(max(hgap,hmin),hmax)
+            hi=1.d0/(hc - psic)
+            hi=min(max(hi,hmaxi),hmini)
           endif
         endif
-        prep=ahamaker/(6.d0*pi*hgap**3)
+        prep=ahamaker/(6.d0*pi)*hi**3
         fxrep(i,j)=prep*0.5d0*(phi(ip,j)-phi(im,j))*dxi
         fyrep(i,j)=prep*0.5d0*(phi(i,jp)-phi(i,jm))*dyi
       endif

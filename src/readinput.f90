@@ -32,7 +32,7 @@ read(55,*) yoffset
 read(55,*) ahamaker
 read(55,*) hcr
 read(55,*) hminr
-read(55,*) hmaxr
+read(55,*) hmaxir
 
 
 
@@ -50,9 +50,11 @@ ddyi=1.d0/dy/dy
 rhoi=1.d0/rho
 eps=epsr*max(dx,dy)
 epsi=1.d0/eps
-hc=hcr*max(dx,dy)
-hmin=hminr*max(dx,dy)
-hmax=hmaxr*max(dx,dy)
+hc=hcr*eps
+psilim=eps*log(99.d0) ! half-thickness of the force band 0.01 < phi < 0.99
+hmin=hminr*eps
+hmini=1.d0/hmin
+hmaxi=hmaxir/eps
 enum=1.e-16
 tbot=0.5d0
 ttop=-0.5d0
@@ -78,7 +80,7 @@ if (icphi .eq. 2) write(*,*) "Drop offsets x,y", xoffset, yoffset
 write(*,*) "Sigma          ", sigma
 write(*,*) "Eps             ", eps
 write(*,*) "Hamaker A_H     ", ahamaker
-write(*,*) "hc, hmin, hmax  ", hc, hmin, hmax
+write(*,*) "hc, hmin, 1/hmax", hc, hmin, hmaxi
 write(*,*) 'Lx             ', lx
 write(*,*) 'Ly             ', ly
 write(*,*) 'U top wall     ', utop

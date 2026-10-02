@@ -14,10 +14,10 @@
 2           ! Initial condition phase-field (0=one drop, 1=read from file, 2=two drops)
 0.35        ! Initial drop radius for phase-field
 0.35        ! Surface tension
-1.0         ! Ratio eps/dx
+0.51        ! Ratio eps/dx
 0.5         ! xoffset: drops at lx/2 -/+ xoffset (icphi=2)
 0.25        ! yoffset: drops at ly/2 +/- yoffset (icphi=2)
-0.01        ! Hamaker constant A_H for near-contact repulsive force (0 = off)
-8.0         ! hc: look-ahead distance (in units of max(dx,dy)), must be > ~5.3*epsr
-5.0         ! hmin: minimum gap distance (in units of max(dx,dy))
-13.0        ! hmax: gap used when no other interface is detected (in units of max(dx,dy))
+0.0         ! Hamaker constant A_H for near-contact repulsive force (0 = off)
+5.1         ! hc: look-ahead distance (in units of eps), must be > log(99)=4.6; 5.1 = 4.6 + 0.5
+4.9         ! hmin: minimum gap distance (in units of eps), keep <= hc
+0.0         ! 1/hmax: inverse gap used when no other interface is detected (in units of 1/eps), 0 = infinite gap (no force)
